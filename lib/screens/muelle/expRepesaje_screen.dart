@@ -7,7 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tpg_attack_kiosko_muelle/config/incoming/exp_incoming_visibility_config.dart';
-import 'package:tpg_attack_kiosko_muelle/services/apis/expRepesaje/exp_repesajer_transaction_runner.dart';
+import 'package:tpg_attack_kiosko_muelle/services/apis/expRepesaje/exp_repesaje_transaction_runner.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/staapisac_api_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/atk_transaction_manager.dart';
@@ -136,7 +136,7 @@ class _ExpRepesajeScreenBodyState extends State<_ExpRepesajeScreenBody>
                     ? (flowRemaining ?? 300)
                     : 0;
                 return AtkHeaderTransaction(
-                  title: 'EXPORTACIÓN FULL',
+                  title: 'REPESAJE EXPORTACIÓN FULL',
                   height: hHeader,
                   assetImagePath:
                       ExpIncomingVisibilityConfig.show['header.logo'] ?? true

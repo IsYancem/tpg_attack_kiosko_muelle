@@ -320,7 +320,9 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     );
 
     setState(() {
-      _ocrStatus = _weightDetected ? SensorStatus.weightOk : SensorStatus.aligned;
+      _ocrStatus = _weightDetected
+          ? SensorStatus.weightOk
+          : SensorStatus.aligned;
     });
 
     LogService.instance.logRequest('OCR_FLOW_DETECTED', {
@@ -414,7 +416,9 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
     if (_weightDetected && !wasWeightDetected) {
       setState(() {
-        _ocrStatus = _ocrDetected ? SensorStatus.weightOk : SensorStatus.goodPosition;
+        _ocrStatus = _ocrDetected
+            ? SensorStatus.weightOk
+            : SensorStatus.goodPosition;
       });
     }
 
@@ -454,7 +458,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     _stableTimer = null;
 
     if (!mounted || _navigated) return;
-    if (!_ocrDetected || !_weightDetected || _lastWeight < _minValidWeight) return;
+    if (!_ocrDetected || !_weightDetected || _lastWeight < _minValidWeight)
+      return;
 
     _weightStable = true;
 
@@ -477,7 +482,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     final now = DateTime.now();
 
     final isSameKey = _lastProcessedEventKey == key;
-    final isInsideWindow = _lastProcessedAt != null &&
+    final isInsideWindow =
+        _lastProcessedAt != null &&
         now.difference(_lastProcessedAt!) <= _eventDedupWindow;
 
     if (isSameKey && isInsideWindow) return true;
@@ -511,12 +517,14 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       if (placa.isEmpty) return;
 
-      if ((_navigating || _validating || _consultandoConductor) && _placaSesion == placa) {
+      if ((_navigating || _validating || _consultandoConductor) &&
+          _placaSesion == placa) {
         _dbg('EVT_SKIP', {'reason': 'flow_running_same_plate'});
         return;
       }
 
-      if ((_navigating || _validating || _consultandoConductor) && _placaSesion != placa) {
+      if ((_navigating || _validating || _consultandoConductor) &&
+          _placaSesion != placa) {
         _navigating = false;
         _validating = false;
         _consultandoConductor = false;
@@ -624,8 +632,13 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     final manager = _manager;
     if (manager == null) return;
 
-    StatusLogBus.instance.addText('OCR_RFID', 'Tiempo agotado. Limpieza de sesión.');
-    LogService.instance.logWarning('RFID_SESSION_TIMEOUT', {'placa': _placaSesion});
+    StatusLogBus.instance.addText(
+      'OCR_RFID',
+      'Tiempo agotado. Limpieza de sesión.',
+    );
+    LogService.instance.logWarning('RFID_SESSION_TIMEOUT', {
+      'placa': _placaSesion,
+    });
 
     _placaSesion = null;
     _ultimoSideDetectado = null;
@@ -663,7 +676,12 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     final manager = _manager;
     if (manager == null) return;
 
-    if (!mounted || _validating || _navigating || _navigated || _consultandoConductor) return;
+    if (!mounted ||
+        _validating ||
+        _navigating ||
+        _navigated ||
+        _consultandoConductor)
+      return;
     if (_placaSesion == null || _placaSesion!.trim().isEmpty) return;
     if (!_ocrDetected) return;
     if (!_weightStable) return;
@@ -707,7 +725,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       if (!mounted) return;
 
       if (chofer == null || chofer.isEmpty) {
-        final message = conductorRes?.conductor?.desError ??
+        final message =
+            conductorRes?.conductor?.desError ??
             conductorRes?.services?.atkGetUltimoChoferPorPlaca?.message ??
             'No se encontró conductor para la placa $placa';
 
@@ -723,23 +742,23 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         'driverCedula': chofer,
         'driverId': chofer,
         'isLoading': true,
-        'mensajeInferior': 'Conductor encontrado.\nValidando datos del conductor...',
+        'mensajeInferior':
+            'Conductor encontrado.\nValidando datos del conductor...',
         'ocrFacialStarted': true,
         'ocrFacialOk': false,
       });
 
       // -- PASO 2: Data completa del conductor ----------------------------------
-      final dataConductorRes = await _datosApiService.conseguirDataYGuardarEnManager(
-        ruc: chofer,
-        manager: manager,
-      );
+      final dataConductorRes = await _datosApiService
+          .conseguirDataYGuardarEnManager(ruc: chofer, manager: manager);
 
       final dataConductor = dataConductorRes?.conductor;
 
       if (!mounted) return;
 
       if (dataConductor == null || !dataConductor.isOk) {
-        final message = dataConductor?.errorMsg ??
+        final message =
+            dataConductor?.errorMsg ??
             dataConductorRes?.services?.atkGetDataPerson?.message ??
             'No se encontró data del conductor $chofer';
 
@@ -776,7 +795,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       if (!mounted) return;
 
-      final errorMsg = manager.errorMessage ?? (e is Exception ? e.toString() : '$e');
+      final errorMsg =
+          manager.errorMessage ?? (e is Exception ? e.toString() : '$e');
       _navigateToError(_cleanError(errorMsg));
     }
   }
@@ -802,7 +822,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       manager.setManyWithoutNotify({
         'isLoading': true,
-        'mensajeInferior': 'Procesando transacción $tipoMov...\nPor favor espere.',
+        'mensajeInferior':
+            'Procesando transacción $tipoMov...\nPor favor espere.',
       });
 
       _navigating = true;
@@ -822,7 +843,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       if (!mounted) return;
 
-      final errorMsg = manager.errorMessage ?? (e is Exception ? e.toString() : '$e');
+      final errorMsg =
+          manager.errorMessage ?? (e is Exception ? e.toString() : '$e');
       _navigateToError(_cleanError(errorMsg));
     } finally {
       _validating = false;
@@ -845,7 +867,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     _consultandoTransaccionPlaca = true;
 
     try {
-      final side = _int(manager.get('side')) ?? _int(manager.get('doorNumber')) ?? 0;
+      final side =
+          _int(manager.get('side')) ?? _int(manager.get('doorNumber')) ?? 0;
       final kiosk = _appManager?.kioskConfig;
 
       final envPlaca = await _datosApiService.consultarPlacaMuelle(
@@ -905,7 +928,9 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         'ocrConsultarPlacaResponse': envPlaca.data?.toJson(),
         'ocrConsultarTransaccionResponse': data.toJson(),
         // Lista completa de movimientos (todos los tipos).
-        'ocrConsultarTransaccionMovements': movements.map((m) => m.toJson()).toList(),
+        'ocrConsultarTransaccionMovements': movements
+            .map((m) => m.toJson())
+            .toList(),
         // Lista filtrada solo EXP — el ExpDobleRunner itera sobre esta.
         'ocrExpMovements': expMovements.map((m) => m.toJson()).toList(),
         'ocrExpMovementCount': expMovements.length,
@@ -938,7 +963,11 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       return 'EXP';
     } catch (e, st) {
-      LogService.instance.logError('OCR_AUTO_CONSULTAR_TRANSACCION_EXCEPTION', e, st);
+      LogService.instance.logError(
+        'OCR_AUTO_CONSULTAR_TRANSACCION_EXCEPTION',
+        e,
+        st,
+      );
       return 'DESCARGA';
     } finally {
       _consultandoTransaccionPlaca = false;
@@ -992,7 +1021,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
     Widget targetScreen;
 
-    // -- SIN CONTENEDOR ? Porteo vacío --------------------------------------
     if (!hasContainer) {
       _setRoutePreview(
         code: 'PVO',
@@ -1006,27 +1034,27 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       });
 
       targetScreen = const PorteoSinContenedor();
-
     } else {
-      // -- CON CONTENEDOR ? resolver tipo -----------------------------------
-      final placa = (_placaSesion ?? manager.vehiculoPlaca ?? '').trim().toUpperCase();
+      final placa = (_placaSesion ?? manager.vehiculoPlaca ?? '')
+          .trim()
+          .toUpperCase();
 
       final tipoResuelto = placa.isNotEmpty
           ? await _resolverTipoMovPorPlacaOcr(placa: placa, manager: manager)
           : 'DESCARGA';
 
       if (tipoResuelto == 'EXP') {
-        // -- 1. Estado visual -------------------------------------------------
         manager.setManyWithoutNotify({
           'isLoading': true,
           'mensajeInferior':
               'Exportación detectada.\nConsultando tipo de operación...',
         });
+
         if (mounted) setState(() {});
 
-        // -- 2. Consultar expo-repesaje ----------------------------------------
-        final contenedorOcr =
-            (manager.get('contenedor1') as String? ?? '').trim().toUpperCase();
+        final contenedorOcr = (manager.get('contenedor1') as String? ?? '')
+            .trim()
+            .toUpperCase();
 
         ExpoRepesajeData? repesajeData;
 
@@ -1040,6 +1068,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             'reason': 'contenedor1 vacío',
             'placa': placa,
           });
+
           manager.setManyWithoutNotify({
             'expoRepesajeErrorCode': -1,
             'expoRepesajeMessage': 'Contenedor no disponible para consulta',
@@ -1060,9 +1089,41 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
           'expMovementCount': expMovementCount,
         });
 
+        if (!isRepesaje && expMovementCount < 2) {
+          final message =
+              'Exportación no válida para doble transacción.\n'
+              'Solo se encontró $expMovementCount transacción EXP pendiente.';
+
+          manager.setManyWithoutNotify({
+            'isLoading': false,
+            'transactionType': 'EXP',
+            'muelleTransactionCode': 'EXP',
+            'muelleTransactionName': 'Exportación incompleta',
+            'ocrRouteDestination': 'EXP_INVALID_SINGLE',
+          });
+
+          await LogService.instance
+              .logWarning('OCR_EXP_DOBLE_REQUIRES_TWO_MOVEMENTS', {
+                'placa': placa,
+                'contenedor': contenedorOcr,
+                'expMovementCount': expMovementCount,
+                'isRepesaje': isRepesaje,
+              });
+
+          _failAndNavigateToError(
+            message: message,
+            logTag: 'OCR_EXP_SINGLE_MOVEMENT_NAV_ERROR',
+            extra: {
+              'placa': placa,
+              'contenedor': contenedorOcr,
+              'expMovementCount': expMovementCount,
+            },
+          );
+
+          return;
+        }
+
         if (isRepesaje) {
-          // -- RAMA REPESAJE --------------------------------------------------
-          // El confirm lo ejecuta ExpRepesajeTransactionRunner (1 sola vez).
           _setRoutePreview(
             code: 'EXP_REPESAJE',
             name: 'Exportación Repesaje',
@@ -1088,14 +1149,9 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
           });
 
           targetScreen = const ExpRepesajeScreen();
-
         } else {
-          // -- RAMA EXP ESTÁNDAR (DOBLE) --------------------------------------
-          // El confirm lo ejecuta ExpDobleTransactionRunner
-          // una vez por cada movimiento EXP de la lista ocrExpMovements.
-          final descargaName = expMovementCount > 1
-              ? 'Exportación con $expMovementCount transacciones'
-              : 'Exportación Full';
+          final descargaName =
+              'Exportación con $expMovementCount transacciones';
 
           _setRoutePreview(
             code: 'EXP',
@@ -1105,7 +1161,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
           manager.setManyWithoutNotify({
             'isLoading': true,
-            'mensajeInferior': 'Exportación estándar.\nPreparando confirmación...',
+            'mensajeInferior': 'Exportación doble.\nPreparando confirmación...',
             'transactionType': 'EXP',
             'muelleTransactionCode': 'EXP',
             'muelleTransactionName': descargaName,
@@ -1124,9 +1180,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
           targetScreen = const ExpDobleScreen();
         }
-
       } else {
-        // -- DESCARGA ---------------------------------------------------------
         final descargaName = isDoubleContainer
             ? 'Descarga con $containerCount contenedores'
             : 'Descarga con contenedor';
@@ -1300,8 +1354,12 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     _ocrSub?.cancel();
     _ocrSub = null;
 
-    try { _vehicleSub?.cancel(); } catch (_) {}
-    try { _connSub?.cancel(); } catch (_) {}
+    try {
+      _vehicleSub?.cancel();
+    } catch (_) {}
+    try {
+      _connSub?.cancel();
+    } catch (_) {}
 
     _vehicleSub = null;
     _connSub = null;

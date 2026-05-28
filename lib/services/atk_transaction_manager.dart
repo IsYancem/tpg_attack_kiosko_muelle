@@ -1,3 +1,4 @@
+// lib/services/atk_transaction_manager.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,7 +8,6 @@ class AtkTransactionManager extends ChangeNotifier {
 
   // ── API genérica ───────────────────────────────────────────────────────────
 
-  /// Exposición del backing store para compatibilidad con código legacy que accedía a .data
   Map<String, dynamic> get data => _d;
 
   dynamic get(String key) => _d[key];
@@ -62,7 +62,6 @@ class AtkTransactionManager extends ChangeNotifier {
   // ── Estado general ─────────────────────────────────────────────────────────
 
   bool get transaccionActiva => _d['transaccionActiva'] as bool? ?? false;
-  // Setter directo para compatibilidad con código existente: manager.transaccionActiva = false
   set transaccionActiva(bool v) {
     _d['transaccionActiva'] = v;
     notifyListeners();
@@ -177,7 +176,6 @@ class AtkTransactionManager extends ChangeNotifier {
   bool? get validarPesoEsValido => _d['validarPesoEsValido'] as bool?;
 
   double get pesoActualBascula => _dbl(_d['pesoActualBascula']) ?? 0.0;
-  // Setter directo para compatibilidad: manager.pesoActualBascula = weight
   set pesoActualBascula(double v) => _d['pesoActualBascula'] = v;
   void setPesoActualBascula(double v) => set('pesoActualBascula', v);
 
@@ -229,7 +227,6 @@ class AtkTransactionManager extends ChangeNotifier {
   // ── Mensaje inferior ──────────────────────────────────────────────────────
 
   String? get mensajeInferior => _d['mensajeInferior'] as String?;
-  // Setter directo para compatibilidad: manager.mensajeInferior = 'texto'
   set mensajeInferior(String? v) => _d['mensajeInferior'] = v;
 
   // ── Exportador EXP ────────────────────────────────────────────────────────
@@ -267,7 +264,8 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get trlRutaTraslado1 => _d['trlRutaTraslado1'] as String?;
   int? get trlSalidaNum1 => _int(_d['trlSalidaNum1']);
   int? get trlMaeId1 => _int(_d['trlMaeId1']);
-  String? get trlZonaPrimariaOrigen1 => _d['trlZonaPrimariaOrigen1'] as String?;
+  String? get trlZonaPrimariaOrigen1 =>
+      _d['trlZonaPrimariaOrigen1'] as String?;
   String? get trlZonaPrimariaDestino1 =>
       _d['trlZonaPrimariaDestino1'] as String?;
   String? get trlFechaEstTraslado1 => _d['trlFechaEstTraslado1'] as String?;
@@ -303,7 +301,8 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get trlMonitorTransaccion => _d['trlMonitorTransaccion'] as String?;
   String? get trlMonitorTipoMov => _d['trlMonitorTipoMov'] as String?;
   String? get trlMonitorBarrera => _d['trlMonitorBarrera'] as String?;
-  String? get trlMonitorFechaBarrera => _d['trlMonitorFechaBarrera'] as String?;
+  String? get trlMonitorFechaBarrera =>
+      _d['trlMonitorFechaBarrera'] as String?;
   bool? get trlShowContenedor2 => _d['trlShowContenedor2'] as bool?;
 
   // ── EXM: Snapshots ────────────────────────────────────────────────────────
@@ -336,12 +335,14 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get exmMonitorBascula => _d['exmMonitorBascula'] as String?;
   String? get exmMonitorNumBascula => _d['exmMonitorNumBascula'] as String?;
   String? get exmMonitorBarrera => _d['exmMonitorBarrera'] as String?;
-  String? get exmMonitorFechaBarrera => _d['exmMonitorFechaBarrera'] as String?;
+  String? get exmMonitorFechaBarrera =>
+      _d['exmMonitorFechaBarrera'] as String?;
   String? get exmMonitorTransaccion => _d['exmMonitorTransaccion'] as String?;
   String? get exmMonitorTipoMov => _d['exmMonitorTipoMov'] as String?;
   String? get exmMonitorContenedor => _d['exmMonitorContenedor'] as String?;
   String? get exmMonitorInOut => _d['exmMonitorInOut'] as String?;
-  int? get exmMonitorVehicleAccessId => _int(_d['exmMonitorVehicleAccessId']);
+  int? get exmMonitorVehicleAccessId =>
+      _int(_d['exmMonitorVehicleAccessId']);
   String? get exmMonitorCedula => _d['exmMonitorCedula'] as String?;
   String? get exmMonitorNombres => _d['exmMonitorNombres'] as String?;
   String? get exmMonitorFoto => _d['exmMonitorFoto'] as String?;
@@ -363,7 +364,8 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get ocrPersistenceSaved => _d['ocrPersistenceSaved'] as String?;
   String? get ocrPersistenceId => _d['ocrPersistenceId'] as String?;
   String? get ocrPersistenceError => _d['ocrPersistenceError'] as String?;
-  String? get ocrPersistenceSavedAt => _d['ocrPersistenceSavedAt'] as String?;
+  String? get ocrPersistenceSavedAt =>
+      _d['ocrPersistenceSavedAt'] as String?;
   String? get ocrMetaTotalClients => _d['ocrMetaTotalClients'] as String?;
   String? get ocrMetaEmittedAt => _d['ocrMetaEmittedAt'] as String?;
   String? get ocrContainerNumbers => _d['ocrContainerNumbers'] as String?;
@@ -402,142 +404,166 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get ocrContainer2MaxNetWeight =>
       _d['ocrContainer2MaxNetWeight'] as String?;
 
-  // -- Conseguir data conductor por RUC/Cédula --------------------------------
+  // ── Conseguir data conductor por RUC/Cédula ───────────────────────────────
 
   int? get conseguirDataConductorErrorCode =>
       _int(_d['conseguirDataConductorErrorCode']);
-
   String? get conseguirDataConductorMessage =>
       _d['conseguirDataConductorMessage'] as String?;
-
   String? get conseguirDataConductorRuc =>
       _d['conseguirDataConductorRuc'] as String?;
-
   String? get conseguirDataConductorEnrollCode =>
       _d['conseguirDataConductorEnrollCode'] as String?;
-
   String? get conseguirDataConductorCode =>
       _d['conseguirDataConductorCode'] as String?;
-
   String? get conseguirDataConductorIdentificationNumber =>
       _d['conseguirDataConductorIdentificationNumber'] as String?;
-
   String? get conseguirDataConductorFirstName =>
       _d['conseguirDataConductorFirstName'] as String?;
-
   String? get conseguirDataConductorLastName =>
       _d['conseguirDataConductorLastName'] as String?;
-
   String? get conseguirDataConductorFullName =>
       _d['conseguirDataConductorFullName'] as String?;
-
   String? get conseguirDataConductorAccessLevel =>
       _d['conseguirDataConductorAccessLevel'] as String?;
-
   String? get conseguirDataConductorTypeId =>
       _d['conseguirDataConductorTypeId'] as String?;
-
   String? get conseguirDataConductorStatusId =>
       _d['conseguirDataConductorStatusId'] as String?;
-
   String? get conseguirDataConductorHasLicense =>
       _d['conseguirDataConductorHasLicense'] as String?;
-
   String? get conseguirDataConductorLicenseType =>
       _d['conseguirDataConductorLicenseType'] as String?;
-
   String? get conseguirDataConductorLicenseExpirationDate =>
       _d['conseguirDataConductorLicenseExpirationDate'] as String?;
-
   String? get conseguirDataConductorState =>
       _d['conseguirDataConductorState'] as String?;
-
   String? get conseguirDataConductorCompanyRuc =>
       _d['conseguirDataConductorCompanyRuc'] as String?;
-
   String? get conseguirDataConductorCompanyName =>
       _d['conseguirDataConductorCompanyName'] as String?;
-
   String? get conseguirDataConductorId =>
       _d['conseguirDataConductorId'] as String?;
-
   String? get conseguirDataConductorIdCompany =>
       _d['conseguirDataConductorIdCompany'] as String?;
 
-  // -- Conseguir conductor por placa ------------------------------------------
+  // ── Conseguir conductor por placa ─────────────────────────────────────────
 
   int? get conseguirConductorErrorCode =>
       _int(_d['conseguirConductorErrorCode']);
-
   String? get conseguirConductorMessage =>
       _d['conseguirConductorMessage'] as String?;
-
   String? get conseguirConductorPlaca =>
       _d['conseguirConductorPlaca'] as String?;
-
   String? get conseguirConductorChofer =>
       _d['conseguirConductorChofer'] as String?;
-
   String? get conseguirConductorNumTran =>
       _d['conseguirConductorNumTran'] as String?;
-
   String? get conseguirConductorFechaIng =>
       _d['conseguirConductorFechaIng'] as String?;
-
   String? get conseguirConductorEstado =>
       _d['conseguirConductorEstado'] as String?;
-
   String? get conseguirConductorTipoTran =>
       _d['conseguirConductorTipoTran'] as String?;
-
   String? get conseguirConductorCodtipo =>
       _d['conseguirConductorCodtipo'] as String?;
-
   String? get conseguirConductorCodContenedor =>
       _d['conseguirConductorCodContenedor'] as String?;
-
-  String? get conseguirConductorTara => _d['conseguirConductorTara'] as String?;
-
+  String? get conseguirConductorTara =>
+      _d['conseguirConductorTara'] as String?;
   String? get conseguirConductorPesoIng =>
       _d['conseguirConductorPesoIng'] as String?;
-
   String? get conseguirConductorPesoSal =>
       _d['conseguirConductorPesoSal'] as String?;
 
-      // -- Expo Repesaje ---------------------------------------------------------
+  // ── Expo Repesaje (consulta solicitud update DISV) ────────────────────────
 
-int? get expoRepesajeErrorCode => _int(_d['expoRepesajeErrorCode']);
-String? get expoRepesajeMessage => _d['expoRepesajeMessage'] as String?;
-String? get expoRepesajeContenedor => _d['expoRepesajeContenedor'] as String?;
-bool get expoRepesajeHasActiveSolicitud =>
-    (_d['expoRepesajeHasActiveSolicitud'] as bool?) ?? false;
-String? get expoRepesajeTipoOperacion =>
-    _d['expoRepesajeTipoOperacion'] as String?;
-Map<String, dynamic>? get expoRepesajeResponse =>
-    _d['expoRepesajeResponse'] as Map<String, dynamic>?;
+  int? get expoRepesajeErrorCode => _int(_d['expoRepesajeErrorCode']);
+  String? get expoRepesajeMessage => _d['expoRepesajeMessage'] as String?;
+  String? get expoRepesajeContenedor =>
+      _d['expoRepesajeContenedor'] as String?;
+  bool get expoRepesajeHasActiveSolicitud =>
+      (_d['expoRepesajeHasActiveSolicitud'] as bool?) ?? false;
+  String? get expoRepesajeTipoOperacion =>
+      _d['expoRepesajeTipoOperacion'] as String?;
+  Map<String, dynamic>? get expoRepesajeResponse =>
+      _d['expoRepesajeResponse'] as Map<String, dynamic>?;
+  String? get expoRepesajeSolicitudId =>
+      _d['expoRepesajeSolicitudId'] as String?;
+  String? get expoRepesajeSolicitudUid =>
+      _d['expoRepesajeSolicitudUid'] as String?;
+  String? get expoRepesajeSolicitudDisv =>
+      _d['expoRepesajeSolicitudDisv'] as String?;
+  String? get expoRepesajeSolicitudNuevoDisv =>
+      _d['expoRepesajeSolicitudNuevoDisv'] as String?;
+  String? get expoRepesajeSolicitudNuevoContenedor =>
+      _d['expoRepesajeSolicitudNuevoContenedor'] as String?;
+  String? get expoRepesajeSolicitudEstado =>
+      _d['expoRepesajeSolicitudEstado'] as String?;
+  String? get expoRepesajeSolicitudTipoOperacion =>
+      _d['expoRepesajeSolicitudTipoOperacion'] as String?;
+  String? get expoRepesajeSolicitudFechaRegistro =>
+      _d['expoRepesajeSolicitudFechaRegistro'] as String?;
+  String? get expoRepesajeSolicitudDisvStr =>
+      _d['expoRepesajeSolicitudDisv'] as String?;
+  String? get expoRepesajeSolicitudCodigoAutorizacion =>
+      _d['expoRepesajeSolicitudCodigoAutorizacion'] as String?;
+  String? get expoRepesajeSolicitudMsgError =>
+      _d['expoRepesajeSolicitudMsgError'] as String?;
 
-String? get expoRepesajeSolicitudId =>
-    _d['expoRepesajeSolicitudId'] as String?;
-String? get expoRepesajeSolicitudUid =>
-    _d['expoRepesajeSolicitudUid'] as String?;
-String? get expoRepesajeSolicitudDisv =>
-    _d['expoRepesajeSolicitudDisv'] as String?;
-String? get expoRepesajeSolicitudNuevoDisv =>
-    _d['expoRepesajeSolicitudNuevoDisv'] as String?;
-String? get expoRepesajeSolicitudNuevoContenedor =>
-    _d['expoRepesajeSolicitudNuevoContenedor'] as String?;
-String? get expoRepesajeSolicitudEstado =>
-    _d['expoRepesajeSolicitudEstado'] as String?;
-String? get expoRepesajeSolicitudTipoOperacion =>
-    _d['expoRepesajeSolicitudTipoOperacion'] as String?;
-String? get expoRepesajeSolicitudFechaRegistro =>
-    _d['expoRepesajeSolicitudFechaRegistro'] as String?;
-String? get expoRepesajeSolicitudDisvStr =>
-    _d['expoRepesajeSolicitudDisv'] as String?;
-String? get expoRepesajeSolicitudCodigoAutorizacion =>
-    _d['expoRepesajeSolicitudCodigoAutorizacion'] as String?;
-String? get expoRepesajeSolicitudMsgError =>
-    _d['expoRepesajeSolicitudMsgError'] as String?;
+  // ── EXP Muelle Repesaje (inicializar → validar → guardar → terminar) ──────
+
+  /// Número de transacción retornado por inicializar (numtrans del SP).
+  String? get expMuelleNumtrans => _d['expMuelleNumtrans'] as String?;
+
+  /// Estado de la transacción desde inicializar: 'ENTRANDO' | 'SALIENDO'.
+  String? get expMuelleEstado => _d['expMuelleEstado'] as String?;
+
+  /// Contenedor retornado por el DISV en inicializar.
+  /// Se compara con el contenedor OCR en validar-contenedor.
+  String? get expMuelleContenedorDisv =>
+      _d['expMuelleContenedorDisv'] as String?;
+
+  /// true cuando el panel de salida debe ser visible (isSalida).
+  bool get expMuellePanelSalidaVisible =>
+      (_d['expMuellePanelSalidaVisible'] as bool?) ?? false;
+
+  /// true si el paso validar-contenedor fue exitoso.
+  bool get expMuelleValidarContenedorOk =>
+      (_d['expMuelleValidarContenedorOk'] as bool?) ?? false;
+
+  /// Contenedor validado retornado por el SP de validación.
+  String? get expMuelleContenedorValidado =>
+      _d['expMuelleContenedorValidado'] as String?;
+
+  /// Número de transacción generado por guardar.
+  String? get expMuelleGuardarNumero =>
+      _d['expMuelleGuardarNumero'] as String?;
+
+  /// true si el paso guardar fue exitoso.
+  bool get expMuelleGuardarOk =>
+      (_d['expMuelleGuardarOk'] as bool?) ?? false;
+
+  /// Estado final retornado por terminar.
+  /// Ej: 'AUTORIZADO_SALIDA', 'AUTORIZADO_PROYECCION', 'BLOQUEADO'.
+  String? get expMuelleTerminarEstado =>
+      _d['expMuelleTerminarEstado'] as String?;
+
+  /// true si el paso terminar fue exitoso.
+  bool get expMuelleTerminarOk =>
+      (_d['expMuelleTerminarOk'] as bool?) ?? false;
+
+  /// Respuesta completa de inicializar (trazabilidad).
+  Map<String, dynamic>? get expMuelleInicializarResponse =>
+      _d['expMuelleInicializarResponse'] as Map<String, dynamic>?;
+
+  /// Respuesta completa de guardar (trazabilidad).
+  Map<String, dynamic>? get expMuelleGuardarResponse =>
+      _d['expMuelleGuardarResponse'] as Map<String, dynamic>?;
+
+  /// Respuesta completa de terminar (trazabilidad).
+  Map<String, dynamic>? get expMuelleTerminarResponse =>
+      _d['expMuelleTerminarResponse'] as Map<String, dynamic>?;
 
   // ── Utilitarios ───────────────────────────────────────────────────────────
 
@@ -569,7 +595,6 @@ String? get expoRepesajeSolicitudMsgError =>
       'driverAlerta',
       'driverId',
       'driverName',
-
       'conseguirConductorErrorCode',
       'conseguirConductorMessage',
       'conseguirConductorPlaca',
@@ -583,7 +608,6 @@ String? get expoRepesajeSolicitudMsgError =>
       'conseguirConductorTara',
       'conseguirConductorPesoIng',
       'conseguirConductorPesoSal',
-
       'conseguirDataConductorErrorCode',
       'conseguirDataConductorMessage',
       'conseguirDataConductorRuc',
@@ -713,27 +737,42 @@ String? get expoRepesajeSolicitudMsgError =>
       'ocrFlowType',
     ],
     'expoRepesaje': [
-  'expoRepesajeErrorCode',
-  'expoRepesajeMessage',
-  'expoRepesajeContenedor',
-  'expoRepesajeHasActiveSolicitud',
-  'expoRepesajeTipoOperacion',
-  'expoRepesajeResponse',
-  'expoRepesajeSolicitudId',
-  'expoRepesajeSolicitudUid',
-  'expoRepesajeSolicitudDisv',
-  'expoRepesajeSolicitudNuevoDisv',
-  'expoRepesajeSolicitudNuevoContenedor',
-  'expoRepesajeSolicitudEstado',
-  'expoRepesajeSolicitudTipoOperacion',
-  'expoRepesajeSolicitudFechaRegistro',
-  'expoRepesajeSolicitudUsuarioRegistra',
-  'expoRepesajeSolicitudFechaProcesa',
-  'expoRepesajeSolicitudFacrurarA',
-  'expoRepesajeSolicitudCodigoAutorizacion',
-  'expoRepesajeSolicitudCodError',
-  'expoRepesajeSolicitudMsgError',
-],
+      'expoRepesajeErrorCode',
+      'expoRepesajeMessage',
+      'expoRepesajeContenedor',
+      'expoRepesajeHasActiveSolicitud',
+      'expoRepesajeTipoOperacion',
+      'expoRepesajeResponse',
+      'expoRepesajeSolicitudId',
+      'expoRepesajeSolicitudUid',
+      'expoRepesajeSolicitudDisv',
+      'expoRepesajeSolicitudNuevoDisv',
+      'expoRepesajeSolicitudNuevoContenedor',
+      'expoRepesajeSolicitudEstado',
+      'expoRepesajeSolicitudTipoOperacion',
+      'expoRepesajeSolicitudFechaRegistro',
+      'expoRepesajeSolicitudUsuarioRegistra',
+      'expoRepesajeSolicitudFechaProcesa',
+      'expoRepesajeSolicitudFacrurarA',
+      'expoRepesajeSolicitudCodigoAutorizacion',
+      'expoRepesajeSolicitudCodError',
+      'expoRepesajeSolicitudMsgError',
+    ],
+    'expMuelleRepesaje': [
+      'expMuelleNumtrans',
+      'expMuelleEstado',
+      'expMuelleContenedorDisv',
+      'expMuellePanelSalidaVisible',
+      'expMuelleValidarContenedorOk',
+      'expMuelleContenedorValidado',
+      'expMuelleGuardarNumero',
+      'expMuelleGuardarOk',
+      'expMuelleTerminarEstado',
+      'expMuelleTerminarOk',
+      'expMuelleInicializarResponse',
+      'expMuelleGuardarResponse',
+      'expMuelleTerminarResponse',
+    ],
   };
 
   void reset(String category) {
@@ -771,9 +810,10 @@ String? get expoRepesajeSolicitudMsgError =>
   void resetExportador() => reset('exportador');
   void resetOcr() => reset('ocr');
   void resetExpoRepesaje() => reset('expoRepesaje');
+  void resetExpMuelleRepesaje() => reset('expMuelleRepesaje');
   void resetAll() => reset('all');
 
-  // ── Setters nombrados (compatibilidad con código existente) ───────────────
+  // ── Setters nombrados ─────────────────────────────────────────────────────
 
   void setTituloPantalla(String? v) => set('tituloPantalla', v);
   void setTransactionType(String? v) => set('transactionType', v);
@@ -795,7 +835,8 @@ String? get expoRepesajeSolicitudMsgError =>
   void setVehiculoCargaImo(String? v) => set('vehiculoCargaImo', v);
   void setVehiculoBooking(String? v) => set('vehiculoBooking', v);
   void setVehiculoNave(String? v) => set('vehiculoNave', v);
-  void setVehiculoObservaciones(String? v) => set('vehiculoObservaciones', v);
+  void setVehiculoObservaciones(String? v) =>
+      set('vehiculoObservaciones', v);
   void setvehiculoRfid(String? v) => set('vehiculoRfid', v);
   void setvehiculoMarca(String? v) => set('vehiculoMarca', v);
   void setvehiculoModelo(String? v) => set('vehiculoModelo', v);

@@ -136,7 +136,7 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
                     ? (flowRemaining ?? 300)
                     : 0;
                 return AtkHeaderTransaction(
-                  title: 'EXPORTACIÓN FULL',
+                  title: 'DOBLE EXPORTACIÓN FULL',
                   height: hHeader,
                   assetImagePath:
                       ExpIncomingVisibilityConfig.show['header.logo'] ?? true
