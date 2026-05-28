@@ -25,8 +25,11 @@ class _H {
     return double.tryParse(v.toString());
   }
 
-  static String? toStr(dynamic v) =>
-      v == null ? null : v.toString().trim().isEmpty ? null : v.toString().trim();
+  static String? toStr(dynamic v) => v == null
+      ? null
+      : v.toString().trim().isEmpty
+      ? null
+      : v.toString().trim();
 
   static List<String> toStrList(dynamic v) {
     if (v is List) return v.whereType<String>().toList();
@@ -116,30 +119,30 @@ class ExpMuelleInicializarRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        'placa': placa,
-        'cedula': cedula,
-        if (nombreConductor != null) 'nombreConductor': nombreConductor,
-        'vehicleAccessId': vehicleAccessId,
-        'tpg': tpg,
-        if (garitaLetra != null) 'garitaLetra': garitaLetra,
-        if (garitaNumero != null) 'garitaNumero': garitaNumero,
-        'doorNumber': doorNumber,
-        if (fechaBarrera != null) 'fechaBarrera': fechaBarrera,
-        'tipoMov': tipoMov,
-        if (contenedor != null) 'contenedor': contenedor,
-        if (buqueDisv != null) 'buqueDisv': buqueDisv,
-        if (bookingDisv != null) 'bookingDisv': bookingDisv,
-        if (clienteDisv != null) 'clienteDisv': clienteDisv,
-        if (productoDisv != null) 'productoDisv': productoDisv,
-        if (tipoCarga != null) 'tipoCarga': tipoCarga,
-        if (cargaIMO != null) 'cargaIMO': cargaIMO,
-        if (refrigeradoDisv != null) 'refrigeradoDisv': refrigeradoDisv,
-        if (pesoCenso != null) 'pesoCenso': pesoCenso,
-        if (fotoConductor != null) 'fotoConductor': fotoConductor,
-        if (usuarioNombre != null) 'usuarioNombre': usuarioNombre,
-        if (emailJefe != null) 'emailJefe': emailJefe,
-        if (ip != null) 'ip': ip,
-      };
+    'placa': placa,
+    'cedula': cedula,
+    if (nombreConductor != null) 'nombreConductor': nombreConductor,
+    'vehicleAccessId': vehicleAccessId,
+    'tpg': tpg,
+    if (garitaLetra != null) 'garitaLetra': garitaLetra,
+    if (garitaNumero != null) 'garitaNumero': garitaNumero,
+    'doorNumber': doorNumber,
+    if (fechaBarrera != null) 'fechaBarrera': fechaBarrera,
+    'tipoMov': tipoMov,
+    if (contenedor != null) 'contenedor': contenedor,
+    if (buqueDisv != null) 'buqueDisv': buqueDisv,
+    if (bookingDisv != null) 'bookingDisv': bookingDisv,
+    if (clienteDisv != null) 'clienteDisv': clienteDisv,
+    if (productoDisv != null) 'productoDisv': productoDisv,
+    if (tipoCarga != null) 'tipoCarga': tipoCarga,
+    if (cargaIMO != null) 'cargaIMO': cargaIMO,
+    if (refrigeradoDisv != null) 'refrigeradoDisv': refrigeradoDisv,
+    if (pesoCenso != null) 'pesoCenso': pesoCenso,
+    if (fotoConductor != null) 'fotoConductor': fotoConductor,
+    if (usuarioNombre != null) 'usuarioNombre': usuarioNombre,
+    if (emailJefe != null) 'emailJefe': emailJefe,
+    if (ip != null) 'ip': ip,
+  };
 }
 
 class ExpMuelleInicializarDisv {
@@ -174,14 +177,14 @@ class ExpMuelleInicializarDisv {
   }
 
   Map<String, dynamic> toJson() => {
-        'cliente': cliente,
-        'producto': producto,
-        'tipoCarga': tipoCarga,
-        'cargaIMO': cargaIMO,
-        'refrigerado': refrigerado,
-        'booking': booking,
-        'buque': buque,
-      };
+    'cliente': cliente,
+    'producto': producto,
+    'tipoCarga': tipoCarga,
+    'cargaIMO': cargaIMO,
+    'refrigerado': refrigerado,
+    'booking': booking,
+    'buque': buque,
+  };
 }
 
 class ExpMuelleInicializarData {
@@ -227,22 +230,23 @@ class ExpMuelleInicializarData {
       sellos: sellos,
       disv: json['disv'] != null
           ? ExpMuelleInicializarDisv.fromJson(
-              json['disv'] as Map<String, dynamic>)
+              json['disv'] as Map<String, dynamic>,
+            )
           : null,
       panelSalidaVisible: json['panelSalidaVisible'] as bool? ?? false,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'numtrans': numtrans,
-        'estado': estado,
-        'tara': tara,
-        'pesoIngreso': pesoIngreso,
-        'contenedor': contenedor,
-        'sellos': sellos,
-        'disv': disv?.toJson(),
-        'panelSalidaVisible': panelSalidaVisible,
-      };
+    'numtrans': numtrans,
+    'estado': estado,
+    'tara': tara,
+    'pesoIngreso': pesoIngreso,
+    'contenedor': contenedor,
+    'sellos': sellos,
+    'disv': disv?.toJson(),
+    'panelSalidaVisible': panelSalidaVisible,
+  };
 }
 
 class ExpMuelleInicializarResponse {
@@ -264,7 +268,8 @@ class ExpMuelleInicializarResponse {
       message: _H.toStr(json['message']) ?? '',
       data: json['data'] != null
           ? ExpMuelleInicializarData.fromJson(
-              json['data'] as Map<String, dynamic>)
+              json['data'] as Map<String, dynamic>,
+            )
           : null,
     );
   }
@@ -288,11 +293,11 @@ class ExpMuelleValidarContenedorRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        'contenedor': contenedor,
-        if (placa != null) 'placa': placa,
-        if (cedula != null) 'cedula': cedula,
-        if (vehicleAccessId != null) 'vehicleAccessId': vehicleAccessId,
-      };
+    'contenedor': contenedor,
+    if (placa != null) 'placa': placa,
+    if (cedula != null) 'cedula': cedula,
+    'vehicleAccessId': vehicleAccessId,
+  };
 }
 
 class ExpMuelleValidarContenedorData {
@@ -329,13 +334,15 @@ class ExpMuelleValidarContenedorResponse {
   bool get isOk => errorCode == 0 && (data?.esValido ?? false);
 
   factory ExpMuelleValidarContenedorResponse.fromJson(
-      Map<String, dynamic> json) {
+    Map<String, dynamic> json,
+  ) {
     return ExpMuelleValidarContenedorResponse(
       errorCode: _H.toInt(json['errorCode']) ?? 1,
       message: _H.toStr(json['message']) ?? '',
       data: json['data'] != null
           ? ExpMuelleValidarContenedorData.fromJson(
-              json['data'] as Map<String, dynamic>)
+              json['data'] as Map<String, dynamic>,
+            )
           : null,
     );
   }
@@ -421,46 +428,46 @@ class ExpMuelleGuardarRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        'placa': placa,
-        'cedula': cedula,
-        if (nombreConductor != null) 'nombreConductor': nombreConductor,
-        'vehicleAccessId': vehicleAccessId,
-        'tpg': tpg,
-        if (garitaLetra != null) 'garitaLetra': garitaLetra,
-        if (garitaNumero != null) 'garitaNumero': garitaNumero,
-        'doorNumber': doorNumber,
-        if (fechaBarrera != null) 'fechaBarrera': fechaBarrera,
-        'tipoMov': tipoMov,
-        'contenedor': contenedor,
-        if (contenedorDisv != null) 'contenedorDisv': contenedorDisv,
-        if (booking != null) 'booking': booking,
-        'tara': tara,
-        'pesoIngreso': pesoIngreso,
-        'pesoSalida': pesoSalida,
-        if (sello1 != null) 'sello1': sello1,
-        if (sello2 != null) 'sello2': sello2,
-        if (sello3 != null) 'sello3': sello3,
-        if (sello4 != null) 'sello4': sello4,
-        if (sello5 != null) 'sello5': sello5,
-        'tipoTran': tipoTran,
-        'codProducto': 'P01',
-        'codTipoCarga': 'T01',
-        'codBuque': 'B01',
-        if (numTrans != null) 'numTrans': numTrans,
-        if (deviceId != null) 'deviceId': deviceId,
-        'inOut': inOut,
-        'procesoCompleto': 'N',
-        'estadoVal': estadoVal,
-        if (huellaJefe != null) 'huellaJefe': huellaJefe,
-        'garitaOut': garitaOut,
-        if (observaciones != null) 'observaciones': observaciones,
-        'pesoBulto': pesoBulto,
-        if (ip != null) 'ip': ip,
-        if (idTraslados != null) 'idTraslados': idTraslados,
-        if (pesoContenedor != null) 'pesoContenedor': pesoContenedor,
-        if (aniodisv != null) 'aniodisv': aniodisv,
-        if (numdisv != null) 'numdisv': numdisv,
-      };
+    'placa': placa,
+    'cedula': cedula,
+    if (nombreConductor != null) 'nombreConductor': nombreConductor,
+    'vehicleAccessId': vehicleAccessId,
+    'tpg': tpg,
+    if (garitaLetra != null) 'garitaLetra': garitaLetra,
+    if (garitaNumero != null) 'garitaNumero': garitaNumero,
+    'doorNumber': doorNumber,
+    if (fechaBarrera != null) 'fechaBarrera': fechaBarrera,
+    'tipoMov': tipoMov,
+    'contenedor': contenedor,
+    if (contenedorDisv != null) 'contenedorDisv': contenedorDisv,
+    if (booking != null) 'booking': booking,
+    'tara': tara,
+    'pesoIngreso': pesoIngreso,
+    'pesoSalida': pesoSalida,
+    if (sello1 != null) 'sello1': sello1,
+    if (sello2 != null) 'sello2': sello2,
+    if (sello3 != null) 'sello3': sello3,
+    if (sello4 != null) 'sello4': sello4,
+    if (sello5 != null) 'sello5': sello5,
+    'tipoTran': tipoTran,
+    'codProducto': 'P01',
+    'codTipoCarga': 'T01',
+    'codBuque': 'B01',
+    if (numTrans != null) 'numTrans': numTrans,
+    if (deviceId != null) 'deviceId': deviceId,
+    'inOut': inOut,
+    'procesoCompleto': 'N',
+    'estadoVal': estadoVal,
+    if (huellaJefe != null) 'huellaJefe': huellaJefe,
+    'garitaOut': garitaOut,
+    if (observaciones != null) 'observaciones': observaciones,
+    'pesoBulto': pesoBulto,
+    if (ip != null) 'ip': ip,
+    if (idTraslados != null) 'idTraslados': idTraslados,
+    if (pesoContenedor != null) 'pesoContenedor': pesoContenedor,
+    if (aniodisv != null) 'aniodisv': aniodisv,
+    if (numdisv != null) 'numdisv': numdisv,
+  };
 }
 
 class ExpMuelleGuardarData {
@@ -486,11 +493,11 @@ class ExpMuelleGuardarData {
   }
 
   Map<String, dynamic> toJson() => {
-        'numero': numero,
-        'contenedorValidadoDisv': contenedorValidadoDisv,
-        'enListaNegra': enListaNegra,
-        'listaNegra': listaNegra,
-      };
+    'numero': numero,
+    'contenedorValidadoDisv': contenedorValidadoDisv,
+    'enListaNegra': enListaNegra,
+    'listaNegra': listaNegra,
+  };
 }
 
 class ExpMuelleGuardarResponse {
@@ -575,31 +582,31 @@ class ExpMuelleTerminarRequest {
   });
 
   Map<String, dynamic> toJson() => {
-        'placa': placa,
-        if (vehicleAccessId != null) 'vehicleAccessId': vehicleAccessId,
-        'btnGuardarEnabled': btnGuardarEnabled,
-        if (btnCancelarEnabled != null) 'btnCancelarEnabled': btnCancelarEnabled,
-        'ver': ver,
-        'imprimir': imprimir,
-        'pesoSalida': pesoSalida,
-        if (pesoIngreso != null) 'pesoIngreso': pesoIngreso,
-        if (tara != null) 'tara': tara,
-        if (contenedor != null) 'contenedor': contenedor,
-        if (booking != null) 'booking': booking,
-        if (cedula != null) 'cedula': cedula,
-        if (nombreConductor != null) 'nombreConductor': nombreConductor,
-        if (cargaIMO != null) 'cargaIMO': cargaIMO,
-        if (garitaLetra != null) 'garitaLetra': garitaLetra,
-        if (garitaNumero != null) 'garitaNumero': garitaNumero,
-        if (usuarioNombre != null) 'usuarioNombre': usuarioNombre,
-        if (emailJefe != null) 'emailJefe': emailJefe,
-        if (ip != null) 'ip': ip,
-        if (tpg != null) 'tpg': tpg,
-        'doorNumber': doorNumber,
-        if (tipoMov != null) 'tipoMov': tipoMov,
-        if (fechaBarrera != null) 'fechaBarrera': fechaBarrera,
-        if (bodegueroUser != null) 'bodegueroUser': bodegueroUser,
-      };
+    'placa': placa,
+    if (vehicleAccessId != null) 'vehicleAccessId': vehicleAccessId,
+    'btnGuardarEnabled': btnGuardarEnabled,
+    if (btnCancelarEnabled != null) 'btnCancelarEnabled': btnCancelarEnabled,
+    'ver': ver,
+    'imprimir': imprimir,
+    'pesoSalida': pesoSalida,
+    if (pesoIngreso != null) 'pesoIngreso': pesoIngreso,
+    if (tara != null) 'tara': tara,
+    if (contenedor != null) 'contenedor': contenedor,
+    if (booking != null) 'booking': booking,
+    if (cedula != null) 'cedula': cedula,
+    if (nombreConductor != null) 'nombreConductor': nombreConductor,
+    if (cargaIMO != null) 'cargaIMO': cargaIMO,
+    if (garitaLetra != null) 'garitaLetra': garitaLetra,
+    if (garitaNumero != null) 'garitaNumero': garitaNumero,
+    if (usuarioNombre != null) 'usuarioNombre': usuarioNombre,
+    if (emailJefe != null) 'emailJefe': emailJefe,
+    if (ip != null) 'ip': ip,
+    if (tpg != null) 'tpg': tpg,
+    'doorNumber': doorNumber,
+    if (tipoMov != null) 'tipoMov': tipoMov,
+    if (fechaBarrera != null) 'fechaBarrera': fechaBarrera,
+    if (bodegueroUser != null) 'bodegueroUser': bodegueroUser,
+  };
 }
 
 class ExpMuelleTerminarData {
@@ -615,9 +622,7 @@ class ExpMuelleTerminarData {
   bool get isBloqueado => estado == 'BLOQUEADO';
 
   factory ExpMuelleTerminarData.fromJson(Map<String, dynamic> json) {
-    return ExpMuelleTerminarData(
-      estado: _H.toStr(json['estado']),
-    );
+    return ExpMuelleTerminarData(estado: _H.toStr(json['estado']));
   }
 
   Map<String, dynamic> toJson() => {'estado': estado};

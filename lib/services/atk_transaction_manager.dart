@@ -264,8 +264,7 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get trlRutaTraslado1 => _d['trlRutaTraslado1'] as String?;
   int? get trlSalidaNum1 => _int(_d['trlSalidaNum1']);
   int? get trlMaeId1 => _int(_d['trlMaeId1']);
-  String? get trlZonaPrimariaOrigen1 =>
-      _d['trlZonaPrimariaOrigen1'] as String?;
+  String? get trlZonaPrimariaOrigen1 => _d['trlZonaPrimariaOrigen1'] as String?;
   String? get trlZonaPrimariaDestino1 =>
       _d['trlZonaPrimariaDestino1'] as String?;
   String? get trlFechaEstTraslado1 => _d['trlFechaEstTraslado1'] as String?;
@@ -301,8 +300,7 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get trlMonitorTransaccion => _d['trlMonitorTransaccion'] as String?;
   String? get trlMonitorTipoMov => _d['trlMonitorTipoMov'] as String?;
   String? get trlMonitorBarrera => _d['trlMonitorBarrera'] as String?;
-  String? get trlMonitorFechaBarrera =>
-      _d['trlMonitorFechaBarrera'] as String?;
+  String? get trlMonitorFechaBarrera => _d['trlMonitorFechaBarrera'] as String?;
   bool? get trlShowContenedor2 => _d['trlShowContenedor2'] as bool?;
 
   // ── EXM: Snapshots ────────────────────────────────────────────────────────
@@ -335,14 +333,12 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get exmMonitorBascula => _d['exmMonitorBascula'] as String?;
   String? get exmMonitorNumBascula => _d['exmMonitorNumBascula'] as String?;
   String? get exmMonitorBarrera => _d['exmMonitorBarrera'] as String?;
-  String? get exmMonitorFechaBarrera =>
-      _d['exmMonitorFechaBarrera'] as String?;
+  String? get exmMonitorFechaBarrera => _d['exmMonitorFechaBarrera'] as String?;
   String? get exmMonitorTransaccion => _d['exmMonitorTransaccion'] as String?;
   String? get exmMonitorTipoMov => _d['exmMonitorTipoMov'] as String?;
   String? get exmMonitorContenedor => _d['exmMonitorContenedor'] as String?;
   String? get exmMonitorInOut => _d['exmMonitorInOut'] as String?;
-  int? get exmMonitorVehicleAccessId =>
-      _int(_d['exmMonitorVehicleAccessId']);
+  int? get exmMonitorVehicleAccessId => _int(_d['exmMonitorVehicleAccessId']);
   String? get exmMonitorCedula => _d['exmMonitorCedula'] as String?;
   String? get exmMonitorNombres => _d['exmMonitorNombres'] as String?;
   String? get exmMonitorFoto => _d['exmMonitorFoto'] as String?;
@@ -364,8 +360,7 @@ class AtkTransactionManager extends ChangeNotifier {
   String? get ocrPersistenceSaved => _d['ocrPersistenceSaved'] as String?;
   String? get ocrPersistenceId => _d['ocrPersistenceId'] as String?;
   String? get ocrPersistenceError => _d['ocrPersistenceError'] as String?;
-  String? get ocrPersistenceSavedAt =>
-      _d['ocrPersistenceSavedAt'] as String?;
+  String? get ocrPersistenceSavedAt => _d['ocrPersistenceSavedAt'] as String?;
   String? get ocrMetaTotalClients => _d['ocrMetaTotalClients'] as String?;
   String? get ocrMetaEmittedAt => _d['ocrMetaEmittedAt'] as String?;
   String? get ocrContainerNumbers => _d['ocrContainerNumbers'] as String?;
@@ -469,8 +464,7 @@ class AtkTransactionManager extends ChangeNotifier {
       _d['conseguirConductorCodtipo'] as String?;
   String? get conseguirConductorCodContenedor =>
       _d['conseguirConductorCodContenedor'] as String?;
-  String? get conseguirConductorTara =>
-      _d['conseguirConductorTara'] as String?;
+  String? get conseguirConductorTara => _d['conseguirConductorTara'] as String?;
   String? get conseguirConductorPesoIng =>
       _d['conseguirConductorPesoIng'] as String?;
   String? get conseguirConductorPesoSal =>
@@ -480,8 +474,7 @@ class AtkTransactionManager extends ChangeNotifier {
 
   int? get expoRepesajeErrorCode => _int(_d['expoRepesajeErrorCode']);
   String? get expoRepesajeMessage => _d['expoRepesajeMessage'] as String?;
-  String? get expoRepesajeContenedor =>
-      _d['expoRepesajeContenedor'] as String?;
+  String? get expoRepesajeContenedor => _d['expoRepesajeContenedor'] as String?;
   bool get expoRepesajeHasActiveSolicitud =>
       (_d['expoRepesajeHasActiveSolicitud'] as bool?) ?? false;
   String? get expoRepesajeTipoOperacion =>
@@ -537,12 +530,10 @@ class AtkTransactionManager extends ChangeNotifier {
       _d['expMuelleContenedorValidado'] as String?;
 
   /// Número de transacción generado por guardar.
-  String? get expMuelleGuardarNumero =>
-      _d['expMuelleGuardarNumero'] as String?;
+  String? get expMuelleGuardarNumero => _d['expMuelleGuardarNumero'] as String?;
 
   /// true si el paso guardar fue exitoso.
-  bool get expMuelleGuardarOk =>
-      (_d['expMuelleGuardarOk'] as bool?) ?? false;
+  bool get expMuelleGuardarOk => (_d['expMuelleGuardarOk'] as bool?) ?? false;
 
   /// Estado final retornado por terminar.
   /// Ej: 'AUTORIZADO_SALIDA', 'AUTORIZADO_PROYECCION', 'BLOQUEADO'.
@@ -550,8 +541,7 @@ class AtkTransactionManager extends ChangeNotifier {
       _d['expMuelleTerminarEstado'] as String?;
 
   /// true si el paso terminar fue exitoso.
-  bool get expMuelleTerminarOk =>
-      (_d['expMuelleTerminarOk'] as bool?) ?? false;
+  bool get expMuelleTerminarOk => (_d['expMuelleTerminarOk'] as bool?) ?? false;
 
   /// Respuesta completa de inicializar (trazabilidad).
   Map<String, dynamic>? get expMuelleInicializarResponse =>
@@ -572,6 +562,8 @@ class AtkTransactionManager extends ChangeNotifier {
   bool get hasVehiculo => vehiculoPlaca?.isNotEmpty == true;
   bool get hasContenedor1 => contenedor1?.isNotEmpty == true;
   bool get hasContenedor2 => contenedor2?.isNotEmpty == true;
+
+  String? get ocrDiSvVehicleAccessId => _d['ocrDiSvVehicleAccessId'] as String?;
 
   bool get isTruckEmpty => (_d['isTruckEmpty'] as bool?) ?? false;
 
@@ -735,6 +727,7 @@ class AtkTransactionManager extends ChangeNotifier {
       'pesoTara',
       'isTruckEmpty',
       'ocrFlowType',
+      'ocrDiSvVehicleAccessId',
     ],
     'expoRepesaje': [
       'expoRepesajeErrorCode',
@@ -835,8 +828,7 @@ class AtkTransactionManager extends ChangeNotifier {
   void setVehiculoCargaImo(String? v) => set('vehiculoCargaImo', v);
   void setVehiculoBooking(String? v) => set('vehiculoBooking', v);
   void setVehiculoNave(String? v) => set('vehiculoNave', v);
-  void setVehiculoObservaciones(String? v) =>
-      set('vehiculoObservaciones', v);
+  void setVehiculoObservaciones(String? v) => set('vehiculoObservaciones', v);
   void setvehiculoRfid(String? v) => set('vehiculoRfid', v);
   void setvehiculoMarca(String? v) => set('vehiculoMarca', v);
   void setvehiculoModelo(String? v) => set('vehiculoModelo', v);

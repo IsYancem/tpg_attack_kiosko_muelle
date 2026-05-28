@@ -91,31 +91,79 @@ class ExpMuelleRepesajeService {
     required String tag,
   }) async {
     final uri = Uri.parse('${_baseUrl}kiosk/api/$path');
+    final sw = Stopwatch()..start();
+
     var headers = await _authHeaders();
     final bodyJson = json.encode(body);
 
-    _log.logRequest('${tag}_REQUEST', {'uri': uri.toString(), 'body': body});
+    Map<String, dynamic> safeHeaders(Map<String, String> h) {
+      return {
+        ...h,
+        if (h['Authorization'] != null)
+          'Authorization': 'Bearer ***${h['Authorization']!.length}',
+      };
+    }
+
+    await _log.logRequest('${tag}_FULL_REQUEST', {
+      'uri': uri.toString(),
+      'method': 'POST',
+      'headers': safeHeaders(headers),
+      'body': body,
+      'bodyJson': bodyJson,
+    });
 
     try {
       var res = await http
           .post(uri, headers: headers, body: bodyJson)
           .timeout(const Duration(seconds: 30));
 
+      await _log.logRequest('${tag}_HTTP_RESPONSE_RAW', {
+        'statusCode': res.statusCode,
+        'elapsedMs': sw.elapsedMilliseconds,
+        'rawBody': utf8.decode(res.bodyBytes),
+      });
+
       if (res.statusCode == 401 || res.statusCode == 403) {
+        await _log.logWarning('${tag}_AUTH_RETRY', {
+          'statusCode': res.statusCode,
+          'message': 'Token vencido o no autorizado. Intentando refresh.',
+        });
+
         invalidateCache();
+
         final appState = AppStateManager.instance;
         final refreshed = await AuthApiService.refresh(appState);
+
+        await _log.logRequest('${tag}_AUTH_REFRESH_RESULT', {
+          'refreshed': refreshed,
+        });
+
         if (refreshed) {
           headers = await _authHeaders();
+
+          await _log.logRequest('${tag}_RETRY_REQUEST', {
+            'uri': uri.toString(),
+            'method': 'POST',
+            'headers': safeHeaders(headers),
+            'body': body,
+            'bodyJson': bodyJson,
+          });
+
           res = await http
               .post(uri, headers: headers, body: bodyJson)
               .timeout(const Duration(seconds: 30));
+
+          await _log.logRequest('${tag}_RETRY_RESPONSE_RAW', {
+            'statusCode': res.statusCode,
+            'elapsedMs': sw.elapsedMilliseconds,
+            'rawBody': utf8.decode(res.bodyBytes),
+          });
         }
       }
 
       if (res.statusCode != 200 && res.statusCode != 201) {
         throw ExpMuelleRepesajeServiceException(
-          'HTTP ${res.statusCode}',
+          'HTTP ${res.statusCode}: ${utf8.decode(res.bodyBytes)}',
           step: tag,
         );
       }
@@ -123,16 +171,40 @@ class ExpMuelleRepesajeService {
       final decoded =
           json.decode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
 
-      _log.logRequest('${tag}_RESPONSE', {
+      sw.stop();
+
+      await _log.logRequest('${tag}_FULL_RESPONSE', {
+        'elapsedMs': sw.elapsedMilliseconds,
+        'statusCode': res.statusCode,
         'errorCode': decoded['errorCode'],
         'message': decoded['message'],
+        'data': decoded['data'],
+        'fullDecoded': decoded,
       });
 
       return decoded;
-    } on TimeoutException catch (e) {
-      _log.logError('${tag}_TIMEOUT', e, StackTrace.current);
+    } on TimeoutException catch (e, st) {
+      sw.stop();
+
+      await _log.logError('${tag}_TIMEOUT', e, st);
+      await _log.logRequest('${tag}_TIMEOUT_CONTEXT', {
+        'elapsedMs': sw.elapsedMilliseconds,
+        'uri': uri.toString(),
+        'body': body,
+      });
+
       rethrow;
-    } catch (e) {
+    } catch (e, st) {
+      sw.stop();
+
+      await _log.logError('${tag}_FULL_EXCEPTION', e, st);
+      await _log.logRequest('${tag}_FULL_EXCEPTION_CONTEXT', {
+        'elapsedMs': sw.elapsedMilliseconds,
+        'uri': uri.toString(),
+        'body': body,
+        'error': e.toString(),
+      });
+
       rethrow;
     }
   }
@@ -147,11 +219,23 @@ class ExpMuelleRepesajeService {
     final kiosk = appManager.kioskConfig;
     final now = _fechaBarrera();
 
+    // ── vehicleAccessId: usar el ID del movimiento DISV guardado por el OCR ──
+    // Se prefiere ocrDiSvVehicleAccessId porque es el ID correcto del acceso
+    // vehicular. manager.atkId puede contener un valor de sesión RFID o estar
+    // vacío. Si ninguno está disponible se envía 0.
+    final vehicleAccessId =
+        int.tryParse(
+          manager.get('ocrDiSvVehicleAccessId')?.toString() ??
+              manager.atkId ??
+              '0',
+        ) ??
+        0;
+
     final req = ExpMuelleInicializarRequest(
       placa: _safePlaca(manager),
       cedula: manager.driverCedula ?? '',
       nombreConductor: manager.driverName,
-      vehicleAccessId: int.tryParse(manager.atkId ?? '0') ?? 0,
+      vehicleAccessId: vehicleAccessId,
       tpg: int.tryParse((kiosk?.patio ?? '1').replaceAll('TPG', '')) ?? 1,
       garitaLetra: kiosk?.gateLetter,
       garitaNumero: int.tryParse(kiosk?.gate ?? '1'),
@@ -172,6 +256,14 @@ class ExpMuelleRepesajeService {
       emailJefe: KioskUserEnv.usuario,
       ip: kiosk?.kioskServer,
     );
+
+    await _log.logRequest('EXP_MUELLE_INICIALIZAR_PRE', {
+      'vehicleAccessId': vehicleAccessId,
+      'ocrDiSvVehicleAccessId': manager.get('ocrDiSvVehicleAccessId'),
+      'atkIdPrevio': manager.atkId,
+      'placa': req.placa,
+      'contenedor': req.contenedor,
+    });
 
     final raw = await _post(
       path: 'exp-muelle/inicializar',
@@ -220,12 +312,14 @@ class ExpMuelleRepesajeService {
       'expMuellePanelSalidaVisible': data.panelSalidaVisible,
     };
 
-    // numtrans → vehicleAccessId para los siguientes pasos
+    // IMPORTANTE: atkId ahora pasa a ser el numtrans del SP.
+    // ocrDiSvVehicleAccessId NO se modifica aquí, conservando el ID del
+    // movimiento DISV para que validarContenedor() pueda usarlo.
     if (data.numtrans != null) {
       all['atkId'] = data.numtrans.toString();
     }
 
-    // Sellos (preservar los del pregate si vienen)
+    // Sellos del pregate
     if (data.sellos.isNotEmpty) {
       if (data.sellos.length > 0) all['sello1Exp'] = data.sellos[0];
       if (data.sellos.length > 1) all['sello2Exp'] = data.sellos[1];
@@ -250,6 +344,10 @@ class ExpMuelleRepesajeService {
 
     _log.logRequest('EXP_MUELLE_INICIALIZAR_MANAGER_APPLIED', {
       'numtrans': data.numtrans,
+      'atkIdAhora': data.numtrans?.toString(), // ← atkId sobreescrito
+      'ocrDiSvVehicleAccessId': manager.get(
+        'ocrDiSvVehicleAccessId',
+      ), // ← intacto
       'estado': data.estado,
       'contenedorDisv': data.contenedor,
       'tara': data.tara,
@@ -274,12 +372,26 @@ class ExpMuelleRepesajeService {
             .trim()
             .toUpperCase();
 
+    // ── vehicleAccessId para atk_valida_exportacion_datos ──────────────────
+    // CRÍTICO: manager.atkId ya tiene el numtrans (sobreescrito por inicializar).
+    // El ID correcto del acceso vehicular está en ocrDiSvVehicleAccessId.
+    // Fallback: expMuelleNumtrans (= numtrans) si no hay ID de movimiento DISV.
+    final vehicleAccessIdStr =
+        manager.get('ocrDiSvVehicleAccessId')?.toString().trim() ??
+        manager.get('expMuelleNumtrans')?.toString().trim() ??
+        '0';
+    final vehicleAccessId = int.tryParse(vehicleAccessIdStr) ?? 0;
+
     await _log.logRequest('EXP_MUELLE_VALIDAR_CONTENEDOR_START', {
       'contenedorOcr': contenedorOcr,
       'contenedorDisv': contenedorDisv,
+      'vehicleAccessId': vehicleAccessId,
+      'source_ocrDiSvVehicleAccessId': manager.get('ocrDiSvVehicleAccessId'),
+      'source_atkId_actual': manager.atkId, // numtrans después de inicializar
+      'source_expMuelleNumtrans': manager.get('expMuelleNumtrans'),
     });
 
-    // ── Paso 2a: Comparación local ──────────────────────────────────────────
+    // ── Comparación local (rápida, sin red) ──────────────────────────────────
     if (contenedorOcr.isEmpty) {
       throw ExpMuelleRepesajeServiceException(
         'El contenedor OCR está vacío. No se puede validar.',
@@ -295,10 +407,7 @@ class ExpMuelleRepesajeService {
       );
     }
 
-    // ── Paso 2b: Validación remota ──────────────────────────────────────────
-    final kiosk = appManager.kioskConfig;
-    final vehicleAccessId = int.tryParse(manager.atkId ?? '0') ?? 0;
-
+    // ── Validación remota (SP atk_valida_exportacion_datos) ──────────────────
     final req = ExpMuelleValidarContenedorRequest(
       contenedor: contenedorOcr,
       placa: _safePlaca(manager),
@@ -332,6 +441,7 @@ class ExpMuelleRepesajeService {
     await _log.logRequest('EXP_MUELLE_VALIDAR_CONTENEDOR_OK', {
       'contenedorOcr': contenedorOcr,
       'contenedorValidado': response.data?.contenedorValidado,
+      'vehicleAccessId': vehicleAccessId,
     });
 
     return response;
@@ -357,15 +467,55 @@ class ExpMuelleRepesajeService {
             .trim()
             .toUpperCase();
 
-    final tara = double.tryParse(manager.pesoTara ?? '0') ?? 0.0;
+    // ID real del acceso vehicular recuperado desde consultar-transaccion.
+    // Este SÍ debe viajar como vehicleAccessId.
+    final vehicleAccessId =
+        int.tryParse(
+          manager.get('ocrDiSvVehicleAccessId')?.toString() ??
+              manager.atkId ??
+              '0',
+        ) ??
+        0;
+
+    // Tara real leída por OCR.
+    final tara = _ocrTaraForContainer(manager, contenedor);
+
     final pesoIngreso = manager.pesoActualBascula;
-    final numTrans = int.tryParse(manager.atkId ?? '0') ?? 0;
+
+    // Por ahora:
+    // ENTRADA => 0
+    // SALIDA  => 1
+    final isSalida =
+        manager.expMuellePanelSalidaVisible ||
+        (manager.expMuelleEstado ?? '').trim().toUpperCase() == 'SALIENDO';
+
+    final numTransFlag = isSalida ? 1 : 0;
+    final tipoTran = isSalida ? 'O' : 'I';
+    final inOut = isSalida ? 'O' : 'I';
+
+    await _log.logRequest('EXP_MUELLE_GUARDAR_BUILD_REQUEST', {
+      'placa': _safePlaca(manager),
+      'contenedor': contenedor,
+      'contenedorDisv': contenedorDisv,
+      'vehicleAccessId': vehicleAccessId,
+      'source_ocrDiSvVehicleAccessId': manager.get('ocrDiSvVehicleAccessId'),
+      'source_atkId': manager.atkId,
+      'taraFromOcr': tara,
+      'ocrContainer1Tare': manager.get('ocrContainer1Tare'),
+      'ocrContainer2Tare': manager.get('ocrContainer2Tare'),
+      'pesoIngreso': pesoIngreso,
+      'expMuelleEstado': manager.expMuelleEstado,
+      'expMuellePanelSalidaVisible': manager.expMuellePanelSalidaVisible,
+      'numTransFlag': numTransFlag,
+      'tipoTran': tipoTran,
+      'inOut': inOut,
+    });
 
     final req = ExpMuelleGuardarRequest(
       placa: _safePlaca(manager),
       cedula: manager.driverCedula ?? '',
       nombreConductor: manager.driverName,
-      vehicleAccessId: numTrans,
+      vehicleAccessId: vehicleAccessId,
       tpg: int.tryParse((kiosk?.patio ?? '1').replaceAll('TPG', '')) ?? 1,
       garitaLetra: kiosk?.gateLetter,
       garitaNumero: int.tryParse(kiosk?.gate ?? '1'),
@@ -377,16 +527,16 @@ class ExpMuelleRepesajeService {
       booking: manager.bookingExp,
       tara: tara,
       pesoIngreso: pesoIngreso,
-      pesoSalida: null, // repesaje = entrada
+      pesoSalida: isSalida ? pesoIngreso : null,
       sello1: manager.sello1Exp ?? manager.sello1,
       sello2: manager.sello2Exp ?? manager.sello2,
       sello3: manager.sello3Exp ?? manager.sello3,
       sello4: manager.sello4Exp ?? manager.sello4,
       sello5: manager.sello5,
-      tipoTran: 'I',
-      numTrans: numTrans > 0 ? numTrans : null,
+      tipoTran: tipoTran,
+      numTrans: numTransFlag,
       deviceId: kiosk?.gate,
-      inOut: 'I',
+      inOut: inOut,
       estadoVal: 1,
       huellaJefe: '',
       garitaOut: 2,
@@ -416,10 +566,53 @@ class ExpMuelleRepesajeService {
       );
     }
 
-    // Persistir en manager
     _applyGuardarResponse(response, manager);
 
     return response;
+  }
+
+  double _ocrTaraForContainer(
+    AtkTransactionManager manager,
+    String contenedor,
+  ) {
+    final c1 = (manager.get('contenedor1') ?? '')
+        .toString()
+        .trim()
+        .toUpperCase();
+    final c2 = (manager.get('contenedor2') ?? '')
+        .toString()
+        .trim()
+        .toUpperCase();
+    final target = contenedor.trim().toUpperCase();
+
+    dynamic rawTara;
+
+    if (target.isNotEmpty && target == c2) {
+      rawTara = manager.get('ocrContainer2Tare');
+    } else {
+      rawTara = manager.get('ocrContainer1Tare');
+    }
+
+    final tara = _doubleFromAny(rawTara);
+
+    if (tara > 0) return tara;
+
+    return _doubleFromAny(manager.pesoTara);
+  }
+
+  double _doubleFromAny(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is num) return value.toDouble();
+
+    final cleaned = value
+        .toString()
+        .trim()
+        .replaceAll(',', '.')
+        .replaceAll(RegExp(r'[^0-9.]'), '');
+
+    return double.tryParse(cleaned) ?? 0.0;
   }
 
   void _applyGuardarResponse(

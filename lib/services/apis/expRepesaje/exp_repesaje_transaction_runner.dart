@@ -12,6 +12,7 @@
 // La clase de confirm anterior (ConfirmService) NO se usa aquí.
 
 import 'package:flutter/material.dart';
+import 'package:tpg_attack_kiosko_muelle/screens/auth/ocrScanner_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/errors/error_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/expRepesaje/exp_muelle_repesaje_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
@@ -32,8 +33,9 @@ class ExpRespesajeTransactionRunner {
     final sw = Stopwatch()..start();
 
     final placa = manager.vehiculoPlaca ?? '';
-    final contenedorOcr =
-        (manager.get('contenedor1') as String? ?? '').trim().toUpperCase();
+    final contenedorOcr = (manager.get('contenedor1') as String? ?? '')
+        .trim()
+        .toUpperCase();
     final solicitudId = manager.expoRepesajeSolicitudId;
 
     await _log.logRequest('EXP_REPESAJE_RUNNER_START', {
@@ -178,7 +180,7 @@ class ExpRespesajeTransactionRunner {
       manager.setMany({
         'isLoading': false,
         'mensajeInferior': 'Transacción completada.\nEstado: $estadoFinal',
-        'transaccionActiva': true,
+        'transaccionActiva': false,
         'ocrConfirmOk': true,
         'expoRepesajeConfirmOk': true,
       });
@@ -190,6 +192,19 @@ class ExpRespesajeTransactionRunner {
         'numtrans': inicializarRes.data?.numtrans,
         'estadoFinal': estadoFinal,
       });
+
+      if (!context.mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const OcrScannerScreen(),
+          transitionDuration: const Duration(milliseconds: 150),
+          transitionsBuilder: (_, animation, __, child) =>
+              FadeTransition(opacity: animation, child: child),
+        ),
+        (route) => false,
+      );
     } catch (e, st) {
       sw.stop();
       await _log.logError('EXP_REPESAJE_RUNNER_ERROR', e, st);
