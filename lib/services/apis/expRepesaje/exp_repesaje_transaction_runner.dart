@@ -18,6 +18,7 @@ import 'package:tpg_attack_kiosko_muelle/services/apis/expRepesaje/exp_muelle_re
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/atk_transaction_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/logger/log_service.dart';
+import 'package:tpg_attack_kiosko_muelle/services/status/gate_control_service.dart';
 
 class ExpRespesajeTransactionRunner {
   ExpRespesajeTransactionRunner();
@@ -195,6 +196,56 @@ class ExpRespesajeTransactionRunner {
 
       if (!context.mounted) return;
 
+      manager.setMany({
+        'isLoading': true,
+        'mensajeInferior': 'Transacción completada.\nAbriendo barrera...',
+        'expRepesajeGateOpenRequested': false,
+        'expRepesajeGateOpenOk': false,
+        'expRepesajeGateOpenGate': null,
+        'expRepesajeGateOpenSide': null,
+      });
+
+      await _openGateAfterSuccess(appManager: appManager, manager: manager);
+
+      if (!context.mounted) return;
+
+      manager.setMany({
+        'isLoading': false,
+        'mensajeInferior': 'Repesaje completado. Barrera abierta.',
+        'expRepesajeGateOpenOk': true,
+      });
+
+      const totalSeconds = 10;
+
+      for (int i = totalSeconds; i >= 0; i--) {
+        if (!context.mounted) return;
+
+        manager.setFlowRemainingSeconds(i);
+
+        if (i == 0) break;
+        await Future.delayed(const Duration(seconds: 1));
+      }
+
+      await _log.logRequest('EXP_REPESAJE_AUTO_EXIT', {
+        'after_seconds': totalSeconds,
+        'placa': manager.vehiculoPlaca,
+        'contenedor': manager.get('contenedor1'),
+        'rfidGate': manager.get('rfidGate'),
+        'side': manager.get('side'),
+        'doorNumber': manager.get('doorNumber'),
+        'expRepesajeGateOpenRequested': manager.get(
+          'expRepesajeGateOpenRequested',
+        ),
+        'expRepesajeGateOpenOk': manager.get('expRepesajeGateOpenOk'),
+        'expRepesajeGateOpenGate': manager.get('expRepesajeGateOpenGate'),
+        'expRepesajeGateOpenSide': manager.get('expRepesajeGateOpenSide'),
+      });
+
+      manager.resetAll();
+      manager.setFlowRemainingSeconds(null);
+
+      if (!context.mounted) return;
+
       Navigator.pushAndRemoveUntil(
         context,
         PageRouteBuilder(
@@ -245,5 +296,156 @@ class ExpRespesajeTransactionRunner {
         );
       }
     }
+  }
+
+  Future<void> _openGateAfterSuccess({
+    required AppStateManager appManager,
+    required AtkTransactionManager manager,
+  }) async {
+    final kioskCfg = appManager.kioskConfig;
+    final gateCfg = appManager.gateConfig;
+
+    final url = _s(kioskCfg?.controlGateService);
+
+    // Header: va como headers['api-key']
+    final headerApiKey = _s(gateCfg?.apiKey);
+
+    // Body: va dentro del JSON base64: {"gate": 92, "api_key": keyPlc, "side": 1}
+    final bodyApiKey = _s(gateCfg?.keyPlc);
+
+    final gate = _rfidGate(manager);
+
+    // IMPORTANTE:
+    // Según tu regla, en EXP REPESAJE siempre abrimos side 1.
+    const side = 1;
+
+    await _log.logRequest('EXP_REPESAJE_GATE_OPEN_START', {
+      'url': url,
+      'urlSource': 'kioskConfig.controlGateService',
+      'gate': gate,
+      'side': side,
+      'sideRule': 'EXP_REPESAJE siempre side=1',
+      'headerApiKeySource': 'gateConfig.apiKey',
+      'bodyApiKeySource': 'gateConfig.keyPlc',
+      'managerRfidGate': manager.get('rfidGate'),
+      'managerSide': manager.get('side'),
+      'managerDoorNumber': manager.get('doorNumber'),
+      'sideGate': manager.sideGate,
+      'kioskControlGateService': kioskCfg?.controlGateService,
+      'gateConfigApiKeyLen': headerApiKey.length,
+      'gateConfigKeyPlcLen': bodyApiKey.length,
+      'hasUrl': url.isNotEmpty,
+      'hasHeaderApiKey': headerApiKey.isNotEmpty,
+      'hasBodyApiKey': bodyApiKey.isNotEmpty,
+      'snapshot': _snapshotExpRepesaje(manager),
+    });
+
+    if (url.isEmpty ||
+        headerApiKey.isEmpty ||
+        bodyApiKey.isEmpty ||
+        gate <= 0) {
+      await _log.logWarning('EXP_REPESAJE_GATE_OPEN_SKIPPED', {
+        'reason': 'Configuración incompleta para abrir barrera',
+        'urlEmpty': url.isEmpty,
+        'headerApiKeyEmpty': headerApiKey.isEmpty,
+        'bodyApiKeyEmpty': bodyApiKey.isEmpty,
+        'gate': gate,
+        'side': side,
+        'kioskControlGateService': kioskCfg?.controlGateService,
+        'gateConfigApiKeyLen': headerApiKey.length,
+        'gateConfigKeyPlcLen': bodyApiKey.length,
+        'managerRfidGate': manager.get('rfidGate'),
+        'snapshot': _snapshotExpRepesaje(manager),
+      });
+
+      manager.setManyWithoutNotify({
+        'expRepesajeGateOpenRequested': true,
+        'expRepesajeGateOpenOk': false,
+        'expRepesajeGateOpenGate': gate,
+        'expRepesajeGateOpenSide': side,
+      });
+
+      throw Exception(
+        'No se pudo abrir barrera: controlGateService/apiKey/keyPlc/gate no válidos.',
+      );
+    }
+
+    final opened = await GateControlService.instance.openGate(
+      url: url,
+      headerApiKey: headerApiKey,
+      bodyApiKey: bodyApiKey,
+      gateLocation: gate.toString(),
+      gate: gate,
+      side: side,
+    );
+
+    manager.setManyWithoutNotify({
+      'expRepesajeGateOpenRequested': true,
+      'expRepesajeGateOpenOk': opened,
+      'expRepesajeGateOpenGate': gate,
+      'expRepesajeGateOpenSide': side,
+    });
+
+    await _log.logRequest('EXP_REPESAJE_GATE_OPEN_RESULT', {
+      'opened': opened,
+      'url': url,
+      'gate': gate,
+      'side': side,
+      'gateLocation': gate.toString(),
+      'snapshot': _snapshotExpRepesaje(manager),
+    });
+
+    if (!opened) {
+      throw Exception('No se pudo abrir la barrera.');
+    }
+  }
+
+  int _rfidGate(AtkTransactionManager manager) {
+    return _int(manager.get('rfidGate')) ?? 0;
+  }
+
+  int? _int(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  String _s(dynamic value) => (value ?? '').toString().trim();
+
+  Map<String, dynamic> _snapshotExpRepesaje(AtkTransactionManager manager) {
+    return {
+      'vehiculoPlaca': manager.vehiculoPlaca,
+      'contenedor': manager.contenedor,
+      'contenedor1': manager.get('contenedor1'),
+      'contenedor2': manager.get('contenedor2'),
+      'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+      'ocrContainerCount': manager.get('ocrContainerCount'),
+      'pesoActualBascula': manager.pesoActualBascula,
+      'pesoIngreso': manager.pesoIngreso,
+      'pesoTara': manager.pesoTara,
+      'driverCedula': manager.driverCedula,
+      'driverName': manager.driverName,
+      'transactionType': manager.transactionType,
+      'rfidGate': manager.get('rfidGate'),
+      'side': manager.get('side'),
+      'doorNumber': manager.get('doorNumber'),
+      'sideGate': manager.sideGate,
+      'expMuelleNumtrans': manager.expMuelleNumtrans,
+      'expMuelleEstado': manager.expMuelleEstado,
+      'expMuelleGuardarOk': manager.expMuelleGuardarOk,
+      'expMuelleTerminarOk': manager.expMuelleTerminarOk,
+      'expMuelleTerminarEstado': manager.expMuelleTerminarEstado,
+      'expRepesajeGateOpenRequested': manager.get(
+        'expRepesajeGateOpenRequested',
+      ),
+      'expRepesajeGateOpenOk': manager.get('expRepesajeGateOpenOk'),
+      'expRepesajeGateOpenGate': manager.get('expRepesajeGateOpenGate'),
+      'expRepesajeGateOpenSide': manager.get('expRepesajeGateOpenSide'),
+      'isLoading': manager.isLoading,
+      'mensajeInferior': manager.mensajeInferior,
+      'hasError': manager.hasError,
+      'errorMessage': manager.errorMessage,
+    };
   }
 }

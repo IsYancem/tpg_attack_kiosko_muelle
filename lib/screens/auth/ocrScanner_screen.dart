@@ -36,6 +36,7 @@ import 'package:tpg_attack_kiosko_muelle/screens/muelle/descarga_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/muelle/expDoble_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/muelle/expRepesaje_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/muelle/psc_screen.dart';
+import 'package:tpg_attack_kiosko_muelle/services/apis/confirm_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/datosApi_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/atk_transaction_manager.dart';
@@ -78,6 +79,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
   // Solo DatosApiService — el confirm lo ejecuta cada runner.
   final DatosApiService _datosApiService = DatosApiService();
+  final ConfirmService _confirmService = ConfirmService();
 
   AppStateManager? _appManager;
   AtkTransactionManager? _manager;
@@ -1147,7 +1149,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
           manager.setManyWithoutNotify({
             'isLoading': true,
-            'mensajeInferior': 'Repesaje confirmado.\nRedirigiendo...',
+            'mensajeInferior':
+                'Repesaje confirmado.\nEjecutando Confirm EXP...',
             'transactionType': 'EXP_REPESAJE',
             'muelleTransactionCode': 'EXP_REPESAJE',
             'muelleTransactionName': 'Exportación Repesaje',
@@ -1155,13 +1158,43 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             'vehiculoTipoCarga': carga,
           });
 
-          await LogService.instance.logRequest('OCR_NAV_EXP_REPESAJE', {
-            'placa': placa,
-            'contenedor': contenedorOcr,
-            'solicitudId': repesajeData?.solicitudUpdateDisv?.id,
-            'solicitudEstado': repesajeData?.solicitudUpdateDisv?.estado,
-            'nuevoDisv': repesajeData?.solicitudUpdateDisv?.nuevoDisv,
+          await LogService.instance
+              .logRequest('OCR_NAV_EXP_REPESAJE_BEFORE_CONFIRM', {
+                'placa': placa,
+                'contenedor': contenedorOcr,
+                'solicitudId': repesajeData?.solicitudUpdateDisv?.id,
+                'solicitudEstado': repesajeData?.solicitudUpdateDisv?.estado,
+                'nuevoDisv': repesajeData?.solicitudUpdateDisv?.nuevoDisv,
+              });
+
+          final confirmOk = await _ejecutarConfirmMuelleExp(
+            manager: manager,
+            placa: placa,
+            contenedor: contenedorOcr,
+            isRepesaje: true,
+            expMovementCount: expMovementCount,
+          );
+
+          if (!confirmOk) return;
+
+          // Restaurar valores de ruta después del confirm.
+          manager.setManyWithoutNotify({
+            'isLoading': true,
+            'mensajeInferior': 'Confirm EXP OK.\nRedirigiendo a repesaje...',
+            'transactionType': 'EXP_REPESAJE',
+            'muelleTransactionCode': 'EXP_REPESAJE',
+            'muelleTransactionName': 'Exportación Repesaje',
+            'ocrRouteDestination': 'EXP_REPESAJE',
+            'vehiculoTipoCarga': carga,
+            'contenedor1': contenedorOcr,
           });
+
+          await LogService.instance
+              .logRequest('OCR_NAV_EXP_REPESAJE_AFTER_CONFIRM', {
+                'placa': placa,
+                'contenedor': contenedorOcr,
+                'solicitudId': repesajeData?.solicitudUpdateDisv?.id,
+              });
 
           targetScreen = const ExpRepesajeScreen();
         } else {
@@ -1210,7 +1243,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
           manager.setManyWithoutNotify({
             'isLoading': true,
-            'mensajeInferior': 'Exportación doble.\nPreparando confirmación...',
+            'mensajeInferior': 'Exportación doble.\nEjecutando Confirm EXP...',
             'transactionType': 'EXP',
             'muelleTransactionCode': 'EXP',
             'muelleTransactionName': descargaName,
@@ -1220,12 +1253,46 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             'vehiculoTipoCarga': carga,
           });
 
-          await LogService.instance.logRequest('OCR_NAV_EXP_DOBLE', {
-            'placa': placa,
-            'expMovementCount': expMovementCount,
-            'contenedor': contenedorOcr,
-            'isDoubleContainer': isDoubleContainer,
+          await LogService.instance
+              .logRequest('OCR_NAV_EXP_DOBLE_BEFORE_CONFIRM', {
+                'placa': placa,
+                'expMovementCount': expMovementCount,
+                'contenedor': contenedorOcr,
+                'isDoubleContainer': isDoubleContainer,
+              });
+
+          final confirmOk = await _ejecutarConfirmMuelleExp(
+            manager: manager,
+            placa: placa,
+            contenedor: contenedorOcr,
+            isRepesaje: false,
+            expMovementCount: expMovementCount,
+          );
+
+          if (!confirmOk) return;
+
+          // Restaurar valores de ruta después del confirm.
+          manager.setManyWithoutNotify({
+            'isLoading': true,
+            'mensajeInferior':
+                'Confirm EXP OK.\nRedirigiendo a exportación doble...',
+            'transactionType': 'EXP',
+            'muelleTransactionCode': 'EXP',
+            'muelleTransactionName': descargaName,
+            'ocrRouteDestination': 'EXP',
+            'ocrRouteBypass': false,
+            'ocrIsDoubleContainer': isDoubleContainer,
+            'vehiculoTipoCarga': carga,
+            'contenedor1': contenedorOcr,
           });
+
+          await LogService.instance
+              .logRequest('OCR_NAV_EXP_DOBLE_AFTER_CONFIRM', {
+                'placa': placa,
+                'expMovementCount': expMovementCount,
+                'contenedor': contenedorOcr,
+                'isDoubleContainer': isDoubleContainer,
+              });
 
           targetScreen = const ExpDobleScreen();
         }
@@ -1486,5 +1553,285 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         );
       },
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // CONFIRM MUELLE EXP — con extracción explícita de DISV para inicializar()
+  // ---------------------------------------------------------------------------
+  Future<bool> _ejecutarConfirmMuelleExp({
+    required AtkTransactionManager manager,
+    required String placa,
+    required String contenedor,
+    required bool isRepesaje,
+    required int expMovementCount,
+  }) async {
+    final appManager = _appManager;
+    if (appManager == null) {
+      _failAndNavigateToError(
+        message: 'No existe AppStateManager para ejecutar Confirm EXP.',
+        logTag: 'OCR_CONFIRM_EXP_APP_MANAGER_NULL',
+        extra: {
+          'placa': placa,
+          'contenedor': contenedor,
+          'isRepesaje': isRepesaje,
+          'expMovementCount': expMovementCount,
+        },
+      );
+      return false;
+    }
+
+    final routeTransactionType = isRepesaje ? 'EXP_REPESAJE' : 'EXP';
+    final routeDestination = isRepesaje ? 'EXP_REPESAJE' : 'EXP';
+
+    try {
+      manager.setManyWithoutNotify({
+        'isLoading': true,
+        'mensajeInferior': isRepesaje
+            ? 'Repesaje confirmado.\nEjecutando Confirm EXP...'
+            : 'Exportación doble detectada.\nEjecutando Confirm EXP...',
+        'confirmTipoMov': 'EXP',
+        'confirmRouteType': routeTransactionType,
+        'confirmIsRepesaje': isRepesaje,
+        'confirmContenedorOcr': contenedor,
+      });
+
+      if (mounted) setState(() {});
+
+      await LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_START', {
+        'placa': placa,
+        'contenedor': contenedor,
+        'isRepesaje': isRepesaje,
+        'expMovementCount': expMovementCount,
+        'atkId': manager.atkId,
+        'ocrDiSvVehicleAccessId': manager.get('ocrDiSvVehicleAccessId'),
+        'movement_active': manager.get('movement_active'),
+        'doorNumber': manager.get('doorNumber'),
+        'side': manager.get('side'),
+        'pesoActualBascula': manager.pesoActualBascula,
+      });
+
+      // Tu backend soporta EXP en el parámetro URL, no EXP_REPESAJE.
+      final raw = await _confirmService.ejecutarConfirmMuelle(
+        manager,
+        appManager,
+        'EXP',
+      );
+
+      final errorCode = _int(raw['errorCode']) ?? 1;
+      final message = raw['message']?.toString() ?? '';
+
+      await LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_RESPONSE', {
+        'errorCode': errorCode,
+        'message': message,
+        'isRepesaje': isRepesaje,
+        'expMovementCount': expMovementCount,
+        'raw': raw,
+        'managerHasError': manager.hasError,
+        'managerErrorMessage': manager.errorMessage,
+      });
+
+      if (errorCode != 0 || manager.hasError) {
+        final errorMsg =
+            manager.errorMessage ??
+            (message.isNotEmpty
+                ? message
+                : 'Error ejecutando Confirm Muelle EXP.');
+
+        _failAndNavigateToError(
+          message: errorMsg,
+          logTag: 'OCR_CONFIRM_MUELLE_EXP_FAILED',
+          extra: {
+            'placa': placa,
+            'contenedor': contenedor,
+            'isRepesaje': isRepesaje,
+            'expMovementCount': expMovementCount,
+            'errorCode': errorCode,
+            'message': message,
+          },
+        );
+        return false;
+      }
+
+      // ── EXTRAER DISV de atkPaConsDisvExp1 para que inicializar() lo tenga ──
+      // _handleExpTransaction del ConfirmService lo intenta vía model['...'],
+      // pero puede no escribir todos los campos. Aquí lo hacemos explícito
+      // leyendo directo del raw JSON.
+      _applyDiSvFromConfirmRaw(raw, manager, contenedor);
+
+      // Restaurar la ruta (confirm puede haber cambiado transactionType a EXP).
+      manager.setManyWithoutNotify({
+        'confirmMuelleExpOk': true,
+        'confirmMuelleExpResponse': raw,
+        'transactionType': routeTransactionType,
+        'muelleTransactionCode': routeTransactionType,
+        'ocrRouteDestination': routeDestination,
+        'contenedor1': contenedor,
+        // ❌ NO sobrescribir vehiculoTipoCarga aquí; ya viene del DISV arriba.
+      });
+
+      await LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_OK', {
+        'placa': placa,
+        'contenedor': contenedor,
+        'isRepesaje': isRepesaje,
+        'routeTransactionType': routeTransactionType,
+        // Trazabilidad de qué quedó en manager para inicializar()
+        'clienteExp': manager.clienteExp,
+        'bookingExp': manager.bookingExp,
+        'naveExp': manager.naveExp,
+        'productoExp': manager.productoExp,
+        'vehiculoTipoCarga': manager.vehiculoTipoCarga,
+        'aniodisv': manager.aniodisv,
+        'numdisv': manager.numdisv,
+        'sello1Exp': manager.sello1Exp,
+        'sello2Exp': manager.sello2Exp,
+      });
+
+      return true;
+    } catch (e, st) {
+      await LogService.instance.logError(
+        'OCR_CONFIRM_MUELLE_EXP_EXCEPTION',
+        e,
+        st,
+      );
+
+      _failAndNavigateToError(
+        message: _cleanError(e),
+        logTag: 'OCR_CONFIRM_MUELLE_EXP_EXCEPTION_NAV_ERROR',
+        extra: {
+          'placa': placa,
+          'contenedor': contenedor,
+          'isRepesaje': isRepesaje,
+          'expMovementCount': expMovementCount,
+        },
+      );
+
+      return false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // HELPER — extraer DISV desde raw de confirm y escribir en manager
+  // ---------------------------------------------------------------------------
+  void _applyDiSvFromConfirmRaw(
+    Map<String, dynamic> raw,
+    AtkTransactionManager manager,
+    String contenedorOcr,
+  ) {
+    try {
+      // Navegar: raw → data → services → atkPaConsDisvExp1 → data[0]
+      final data = raw['data'] as Map<String, dynamic>?;
+      final services = data?['services'] as Map<String, dynamic>?;
+      final disvEnvelope =
+          services?['atkPaConsDisvExp1'] as Map<String, dynamic>?;
+      final disvList = disvEnvelope?['data'];
+
+      Map<String, dynamic> disv = {};
+
+      if (disvList is List && disvList.isNotEmpty) {
+        final first = disvList[0];
+        if (first is Map<String, dynamic>) {
+          disv = first;
+        } else if (first is Map) {
+          disv = Map<String, dynamic>.from(first);
+        }
+      } else if (disvList is Map<String, dynamic>) {
+        // Algunos backends devuelven objeto en lugar de lista
+        disv = disvList;
+      }
+
+      if (disv.isEmpty) {
+        LogService.instance.logWarning('OCR_CONFIRM_DISV_EXTRACT_EMPTY', {
+          'reason': 'atkPaConsDisvExp1.data está vacío o ausente',
+          'disvEnvelope': disvEnvelope,
+        });
+        return;
+      }
+
+      // ── Helpers locales ─────────────────────────────────────────────────────
+      String? _str(dynamic v) {
+        if (v == null) return null;
+        final s = v.toString().trim();
+        return s.isEmpty ? null : s;
+      }
+
+      int? _intVal(dynamic v) {
+        if (v == null) return null;
+        if (v is int) return v;
+        if (v is num) return v.toInt();
+        return int.tryParse(v.toString().trim());
+      }
+
+      double? _dblVal(dynamic v) {
+        if (v == null) return null;
+        if (v is double) return v;
+        if (v is num) return v.toDouble();
+        final cleaned = v.toString().trim().replaceAll(',', '.');
+        return double.tryParse(cleaned);
+      }
+
+      // ── Mapear campos del DISV al manager ───────────────────────────────────
+      final fields = <String, dynamic>{
+        // Cliente / empresa dueña del contenedor
+        if (_str(disv['nombre']) != null) 'clienteExp': _str(disv['nombre']),
+
+        // Tipo de carga (FCL, LCL, etc.)
+        if (_str(disv['tipocarga']) != null)
+          'vehiculoTipoCarga': _str(disv['tipocarga']),
+
+        // Producto
+        if (_str(disv['producto']) != null)
+          'productoExp': _str(disv['producto']),
+
+        // Booking y nave
+        if (_str(disv['booking']) != null) 'bookingExp': _str(disv['booking']),
+        if (_str(disv['nave']) != null) 'naveExp': _str(disv['nave']),
+
+        // Contenedor del DISV (para validación cruzada con OCR)
+        if (_str(disv['numcontenedor']) != null)
+          'contenedorExp': _str(disv['numcontenedor']),
+
+        // Sellos
+        if (_str(disv['sello1']) != null) 'sello1Exp': _str(disv['sello1']),
+        if (_str(disv['sello2']) != null) 'sello2Exp': _str(disv['sello2']),
+        if (_str(disv['sello3']) != null) 'sello3Exp': _str(disv['sello3']),
+        if (_str(disv['sello4']) != null) 'sello4Exp': _str(disv['sello4']),
+
+        // Tara OCR
+        if (_dblVal(disv['tara']) != null && (_dblVal(disv['tara']) ?? 0) > 0)
+          'pesoTara': disv['tara'].toString(),
+
+        // IMO y refrigerado
+        if (_str(disv['carga_imo']) != null)
+          'vehiculoCargaImo': _str(disv['carga_imo']),
+        if (_str(disv['refrigerado']) != null)
+          'vehiculoRefrigerado': _str(disv['refrigerado']),
+
+        // Observaciones
+        if (_str(disv['observaciones']) != null)
+          'vehiculoObservaciones': _str(disv['observaciones']),
+
+        // DISV año y número (críticos para guardar)
+        if (_intVal(disv['aniodisv']) != null)
+          'aniodisv': _intVal(disv['aniodisv']),
+        if (_intVal(disv['numdisv']) != null)
+          'numdisv': _intVal(disv['numdisv']),
+      };
+
+      manager.setManyWithoutNotify(fields);
+
+      LogService.instance.logRequest('OCR_CONFIRM_DISV_APPLIED', {
+        'contenedorOcr': contenedorOcr,
+        'disvNombre': disv['nombre'],
+        'disvTipocarga': disv['tipocarga'],
+        'disvBooking': disv['booking'],
+        'disvNave': disv['nave'],
+        'disvAniodisv': disv['aniodisv'],
+        'disvNumdisv': disv['numdisv'],
+        'fieldsApplied': fields.keys.toList(),
+      });
+    } catch (e, st) {
+      LogService.instance.logError('OCR_CONFIRM_DISV_EXTRACT_EXCEPTION', e, st);
+      // No lanzamos — no bloqueamos el flujo por fallo de extracción de DISV.
+    }
   }
 }
