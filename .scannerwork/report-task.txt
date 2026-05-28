@@ -1,0 +1,6 @@
+projectKey=tpg_attack_kiosko_flutter
+serverUrl=http://localhost:9000
+serverVersion=25.10.0.114319
+dashboardUrl=http://localhost:9000/dashboard?id=tpg_attack_kiosko_flutter
+ceTaskId=e730b961-806f-4764-a6e7-96805b9d8834
+ceTaskUrl=http://localhost:9000/api/ce/task?id=e730b961-806f-4764-a6e7-96805b9d8834
