@@ -878,7 +878,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
   // ---------------------------------------------------------------------------
   // RESOLUCIÓN DE TIPO DE MOVIMIENTO
   // ---------------------------------------------------------------------------
-
   Future<String> _resolverTipoMovPorPlacaOcr({
     required String placa,
     required AtkTransactionManager manager,
@@ -941,7 +940,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       final data = envTxn.data!;
       final movements = data.movements;
 
-      // Filtrar solo movimientos EXP para que los runners puedan iterar.
       final expMovements = movements
           .where((m) => _normalizeTipoMov(m.tipoMov) == 'EXP')
           .toList();
@@ -949,11 +947,9 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       manager.setManyWithoutNotify({
         'ocrConsultarPlacaResponse': envPlaca.data?.toJson(),
         'ocrConsultarTransaccionResponse': data.toJson(),
-        // Lista completa de movimientos.
         'ocrConsultarTransaccionMovements': movements
             .map((m) => m.toJson())
             .toList(),
-        // Lista filtrada solo EXP — el ExpDobleRunner itera sobre esta.
         'ocrExpMovements': expMovements.map((m) => m.toJson()).toList(),
         'ocrExpMovementCount': expMovements.length,
       });
@@ -966,44 +962,125 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         return 'DESCARGA';
       }
 
-      // El primer movimiento EXP se marca como activo.
-      final firstExp = expMovements.first;
-      final firstExpJson = firstExp.toJson();
+      // ── CASO 1 MOVIMIENTO: flujo simple ───────────────────────────────────
+      if (expMovements.length == 1) {
+        final firstExp = expMovements.first;
+        final firstExpJson = firstExp.toJson();
+        final movVehicleAccessId = _extractVacIdFromMovement(firstExpJson);
 
-      // ── EXTRAER vehicleAccessId del movimiento DISV ───────────────────────
-      // Se guarda en campo DEDICADO (ocrDiSvVehicleAccessId) porque
-      // inicializar() sobreescribirá manager.atkId con el numtrans del SP.
-      // De esta forma validarContenedor() podrá recuperar el ID correcto.
-      final rawVacId =
-          firstExpJson['vehicleAccessId'] ??
-          firstExpJson['vehicle_access_id'] ??
-          firstExpJson['atk_id'] ??
-          firstExpJson['registro'] ??
-          firstExpJson['id'] ??
-          firstExpJson['raw']?['id'];
+        manager.setManyWithoutNotify({
+          'transactionType': 'EXP',
+          'muelleTransactionCode': 'EXP',
+          'muelleTransactionName': 'Exportación Full',
+          'ocrRouteDestination': 'EXP',
+          'movement_active': firstExpJson,
+          if (movVehicleAccessId > 0)
+            'ocrDiSvVehicleAccessId': movVehicleAccessId.toString(),
+          if (movVehicleAccessId > 0 &&
+              (manager.atkId == null || manager.atkId!.isEmpty))
+            'atkId': movVehicleAccessId.toString(),
+        });
 
-      final movVehicleAccessId = int.tryParse(rawVacId?.toString() ?? '0') ?? 0;
+        LogService.instance.logRequest('OCR_AUTO_EXP_FOUND', {
+          'placa': placa,
+          'expMovementCount': 1,
+          'firstTipoMov': firstExp.tipoMov,
+          'movVehicleAccessId': movVehicleAccessId,
+        });
 
+        return 'EXP';
+      }
+
+      // ── CASO 2+ MOVIMIENTOS: EXP DOBLE ───────────────────────────────────
+      // Identificar cuál movimiento coincide con el contenedor OCR
+      // comparando con el contenedor embebido en conductor_ruc.
+      //
+      // Formato: "CGMU5721851-20339   " → contenedor = "CGMU5721851"
+      //
+      // El movimiento que NO coincide con el OCR es el de SALIDA.
+      // Ese se confirma primero en OcrScannerScreen.
+      // El movimiento que SÍ coincide (ENTRADA) va al ExpDobleScreen.
+
+      final contenedorOcr = (manager.get('contenedor1') as String? ?? '')
+          .trim()
+          .toUpperCase();
+
+      Map<String, dynamic>? movSalida; // NO coincide OCR → confirmar primero
+      Map<String, dynamic>?
+      movEntrada; // SÍ coincide OCR → procesar en pantalla
+
+      for (final m in expMovements) {
+        final mJson = m.toJson();
+        final contEnMovimiento = _extractContainerFromConductorRuc(mJson);
+
+        await LogService.instance.logRequest('OCR_EXP_DOBLE_CLASSIFY_MOV', {
+          'movid': mJson['movid'],
+          'id': mJson['id'],
+          'contEnMovimiento': contEnMovimiento,
+          'contenedorOcr': contenedorOcr,
+          'coincide': contEnMovimiento == contenedorOcr,
+        });
+
+        if (contEnMovimiento.isNotEmpty && contEnMovimiento == contenedorOcr) {
+          movEntrada ??= mJson; // Coincide con OCR → entrada
+        } else {
+          movSalida ??= mJson; // No coincide → salida
+        }
+      }
+
+      // Fallback si la clasificación no fue posible
+      if (movSalida == null && movEntrada == null) {
+        // Sin conductor_ruc útil: el primero es salida, el segundo entrada
+        movSalida = expMovements[0].toJson();
+        movEntrada = expMovements[1].toJson();
+      } else if (movSalida == null) {
+        // Todos coincidían (raro): el segundo es salida
+        movSalida = expMovements.length > 1
+            ? expMovements[1].toJson()
+            : expMovements[0].toJson();
+      } else if (movEntrada == null) {
+        // Ninguno coincidió: el segundo es entrada
+        movEntrada = expMovements.length > 1
+            ? expMovements[1].toJson()
+            : expMovements[0].toJson();
+      }
+
+      final vacIdSalida = _extractVacIdFromMovement(movSalida);
+      final vacIdEntrada = _extractVacIdFromMovement(movEntrada!);
+
+      // Guardar ambos movimientos en el manager
       manager.setManyWithoutNotify({
         'transactionType': 'EXP',
         'muelleTransactionCode': 'EXP',
-        'muelleTransactionName': 'Exportación Full',
+        'muelleTransactionName': 'Exportación Doble',
         'ocrRouteDestination': 'EXP',
-        'movement_active': firstExpJson,
 
-        if (movVehicleAccessId > 0)
-          'ocrDiSvVehicleAccessId': movVehicleAccessId.toString(),
+        // El movimiento de SALIDA va primero (confirm en OcrScannerScreen)
+        'movement_active': movSalida,
+        'ocrExpMovSalida': movSalida,
+        'ocrExpMovEntrada': movEntrada,
 
-        if (movVehicleAccessId > 0 &&
+        // VehicleAccessId del movimiento de SALIDA (el que vamos a confirmar)
+        if (vacIdSalida > 0) 'ocrDiSvVehicleAccessId': vacIdSalida.toString(),
+        if (vacIdSalida > 0 &&
             (manager.atkId == null || manager.atkId!.isEmpty))
-          'atkId': movVehicleAccessId.toString(),
+          'atkId': vacIdSalida.toString(),
+
+        // VehicleAccessId del movimiento de ENTRADA (para ExpDobleScreen)
+        if (vacIdEntrada > 0)
+          'ocrDiSvVehicleAccessIdEntrada': vacIdEntrada.toString(),
       });
 
-      LogService.instance.logRequest('OCR_AUTO_EXP_FOUND', {
+      await LogService.instance.logRequest('OCR_AUTO_EXP_DOBLE_FOUND', {
         'placa': placa,
         'expMovementCount': expMovements.length,
-        'firstTipoMov': firstExp.tipoMov,
-        'movVehicleAccessId': movVehicleAccessId,
+        'contenedorOcr': contenedorOcr,
+        'movSalidaId': movSalida['id'],
+        'movSalidaContainer': _extractContainerFromConductorRuc(movSalida),
+        'movSalidaVacId': vacIdSalida,
+        'movEntradaId': movEntrada['id'],
+        'movEntradaContainer': _extractContainerFromConductorRuc(movEntrada),
+        'movEntradaVacId': vacIdEntrada,
       });
 
       return 'EXP';
@@ -1019,6 +1096,35 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     }
   }
 
+  int _extractVacIdFromMovement(Map<String, dynamic> movJson) {
+    final rawVacId =
+        movJson['vehicleAccessId'] ??
+        movJson['vehicle_access_id'] ??
+        movJson['atk_id'] ??
+        movJson['registro'] ??
+        movJson['id'] ??
+        (movJson['raw'] as Map<String, dynamic>?)?['id'];
+
+    return int.tryParse(rawVacId?.toString() ?? '0') ?? 0;
+  }
+
+  String _extractContainerFromConductorRuc(Map<String, dynamic> movJson) {
+    // Buscar en conductor_ruc directo, o en raw.conductor_ruc
+    final raw =
+        movJson['conductor_ruc']?.toString().trim() ??
+        (movJson['raw'] as Map<String, dynamic>?)?['conductor_ruc']
+            ?.toString()
+            .trim() ??
+        '';
+
+    if (raw.isEmpty) return '';
+
+    // El contenedor es todo lo que está antes del primer guion
+    final dashIndex = raw.indexOf('-');
+    if (dashIndex <= 0) return raw.trim().toUpperCase();
+
+    return raw.substring(0, dashIndex).trim().toUpperCase();
+  }
   // ---------------------------------------------------------------------------
   // NAVEGACIÓN
   // ---------------------------------------------------------------------------
@@ -1058,7 +1164,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     if (manager == null) return;
 
     final mov = _normalizeTipoMov(tipoMov);
-    final carga = _normalizeFlag(cargaSuelta);
 
     final hasContainer = _hasOcrContainer(manager);
     final containerCount = _int(manager.get('ocrContainerCount')) ?? 0;
@@ -1067,6 +1172,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     Widget targetScreen;
 
     if (!hasContainer) {
+      // ── SIN CONTENEDOR → PorteoSinContenedor ─────────────────────────────
       _setRoutePreview(
         code: 'PVO',
         name: 'Porteo vacío sin contenedor',
@@ -1080,6 +1186,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       targetScreen = const PorteoSinContenedor();
     } else {
+      // ── CON CONTENEDOR: resolver tipo ─────────────────────────────────────
       final placa = (_placaSesion ?? manager.vehiculoPlaca ?? '')
           .trim()
           .toUpperCase();
@@ -1102,25 +1209,22 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             .toUpperCase();
 
         if (contenedorOcr.isEmpty) {
-          final message =
-              'No se pudo consultar repesaje porque el contenedor OCR está vacío.';
-
           await LogService.instance
               .logWarning('OCR_EXPO_REPESAJE_CONTAINER_EMPTY', {
                 'placa': placa,
                 'contenedor1': manager.get('contenedor1'),
                 'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
               });
-
           _failAndNavigateToError(
-            message: message,
+            message:
+                'No se pudo consultar repesaje porque el contenedor OCR está vacío.',
             logTag: 'OCR_EXPO_REPESAJE_CONTAINER_EMPTY_NAV_ERROR',
             extra: {'placa': placa},
           );
-
           return;
         }
 
+        // Consultar si hay solicitud de repesaje activa para este contenedor
         final repesajeData = await _datosApiService
             .expoRepesajeYGuardarEnManager(
               contenedor: contenedorOcr,
@@ -1140,6 +1244,9 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
           'expMovementCount': expMovementCount,
         });
 
+        // ════════════════════════════════════════════════════════════════════
+        // RAMA A: EXP REPESAJE
+        // ════════════════════════════════════════════════════════════════════
         if (isRepesaje) {
           _setRoutePreview(
             code: 'EXP_REPESAJE',
@@ -1155,7 +1262,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             'muelleTransactionCode': 'EXP_REPESAJE',
             'muelleTransactionName': 'Exportación Repesaje',
             'ocrRouteDestination': 'EXP_REPESAJE',
-            'vehiculoTipoCarga': carga,
           });
 
           await LogService.instance
@@ -1177,7 +1283,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
           if (!confirmOk) return;
 
-          // Restaurar valores de ruta después del confirm.
+          // Restaurar ruta post-confirm (confirm puede cambiar transactionType)
           manager.setManyWithoutNotify({
             'isLoading': true,
             'mensajeInferior': 'Confirm EXP OK.\nRedirigiendo a repesaje...',
@@ -1185,7 +1291,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             'muelleTransactionCode': 'EXP_REPESAJE',
             'muelleTransactionName': 'Exportación Repesaje',
             'ocrRouteDestination': 'EXP_REPESAJE',
-            'vehiculoTipoCarga': carga,
             'contenedor1': contenedorOcr,
           });
 
@@ -1197,43 +1302,33 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
               });
 
           targetScreen = const ExpRepesajeScreen();
-        } else {
-          if (expMovementCount < 2) {
-            final message =
-                'Exportación no válida para doble transacción.\n'
-                'No es repesaje y solo se encontró $expMovementCount transacción EXP pendiente.';
 
-            manager.setManyWithoutNotify({
-              'isLoading': false,
-              'transactionType': 'EXP',
-              'muelleTransactionCode': 'EXP',
-              'muelleTransactionName': 'Exportación incompleta',
-              'ocrRouteDestination': 'EXP_INVALID_SINGLE',
-            });
+          // ════════════════════════════════════════════════════════════════════
+          // RAMA B: EXP DOBLE (2+ movimientos, no repesaje)
+          // ════════════════════════════════════════════════════════════════════
+        } else if (expMovementCount >= 2) {
+          // Leer los movimientos clasificados por _resolverTipoMovPorPlacaOcr
+          final movSalidaJson =
+              manager.get('ocrExpMovSalida') as Map<String, dynamic>?;
+          final movEntradaJson =
+              manager.get('ocrExpMovEntrada') as Map<String, dynamic>?;
 
-            await LogService.instance
-                .logWarning('OCR_EXP_DOBLE_REQUIRES_TWO_MOVEMENTS', {
-                  'placa': placa,
-                  'contenedor': contenedorOcr,
-                  'expMovementCount': expMovementCount,
-                  'isRepesaje': isRepesaje,
-                });
-
+          if (movSalidaJson == null) {
             _failAndNavigateToError(
-              message: message,
-              logTag: 'OCR_EXP_SINGLE_MOVEMENT_NAV_ERROR',
-              extra: {
-                'placa': placa,
-                'contenedor': contenedorOcr,
-                'expMovementCount': expMovementCount,
-              },
+              message:
+                  'No se pudo identificar el movimiento de salida EXP doble.',
+              logTag: 'OCR_EXP_DOBLE_MOV_SALIDA_NULL',
+              extra: {'placa': placa, 'expMovementCount': expMovementCount},
             );
-
             return;
           }
 
-          final descargaName =
-              'Exportación con $expMovementCount transacciones';
+          final contSalida = _extractContainerFromConductorRuc(movSalidaJson);
+          final contEntrada = movEntradaJson != null
+              ? _extractContainerFromConductorRuc(movEntradaJson)
+              : contenedorOcr;
+
+          final descargaName = 'Exportación Doble ($expMovementCount mov.)';
 
           _setRoutePreview(
             code: 'EXP',
@@ -1241,61 +1336,131 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             target: 'ExpDobleScreen',
           );
 
+          // Activar el movimiento de SALIDA para el confirm
+          final vacIdSalida = _extractVacIdFromMovement(movSalidaJson);
+
           manager.setManyWithoutNotify({
             'isLoading': true,
-            'mensajeInferior': 'Exportación doble.\nEjecutando Confirm EXP...',
+            'mensajeInferior':
+                'Exportación doble.\nConfirmando transacción de salida...',
             'transactionType': 'EXP',
             'muelleTransactionCode': 'EXP',
             'muelleTransactionName': descargaName,
             'ocrRouteDestination': 'EXP',
             'ocrRouteBypass': false,
             'ocrIsDoubleContainer': isDoubleContainer,
-            'vehiculoTipoCarga': carga,
+            'movement_active': movSalidaJson,
+            if (vacIdSalida > 0)
+              'ocrDiSvVehicleAccessId': vacIdSalida.toString(),
+            if (vacIdSalida > 0) 'atkId': vacIdSalida.toString(),
           });
 
           await LogService.instance
-              .logRequest('OCR_NAV_EXP_DOBLE_BEFORE_CONFIRM', {
+              .logRequest('OCR_NAV_EXP_DOBLE_CONFIRM_SALIDA_START', {
                 'placa': placa,
                 'expMovementCount': expMovementCount,
-                'contenedor': contenedorOcr,
-                'isDoubleContainer': isDoubleContainer,
+                'contSalida': contSalida,
+                'contEntrada': contEntrada,
+                'contenedorOcr': contenedorOcr,
+                'vacIdSalida': vacIdSalida,
+                'movSalidaId': movSalidaJson['id'],
               });
 
+          // Confirm SOLO del movimiento de SALIDA
           final confirmOk = await _ejecutarConfirmMuelleExp(
             manager: manager,
             placa: placa,
-            contenedor: contenedorOcr,
+            contenedor: contSalida.isNotEmpty ? contSalida : contenedorOcr,
             isRepesaje: false,
             expMovementCount: expMovementCount,
           );
 
           if (!confirmOk) return;
 
-          // Restaurar valores de ruta después del confirm.
+          // Guardar resultado y preparar el movimiento de ENTRADA para
+          // que ExpDobleScreen lo tenga disponible.
+          final confirmSalidaResponse = manager.get('confirmMuelleExpResponse');
+
           manager.setManyWithoutNotify({
             'isLoading': true,
             'mensajeInferior':
-                'Confirm EXP OK.\nRedirigiendo a exportación doble...',
+                'Salida confirmada.\nPreparando pantalla doble...',
             'transactionType': 'EXP',
             'muelleTransactionCode': 'EXP',
             'muelleTransactionName': descargaName,
             'ocrRouteDestination': 'EXP',
             'ocrRouteBypass': false,
             'ocrIsDoubleContainer': isDoubleContainer,
-            'vehiculoTipoCarga': carga,
+
+            // Resultado del confirm de SALIDA
+            'expDobleConfirmSalidaOk': true,
+            'expDobleConfirmSalidaResponse': confirmSalidaResponse,
+            'expDobleContSalida': contSalida,
+
+            // Movimiento de ENTRADA pendiente (se procesa en ExpDobleScreen)
+            'expDobleMovEntrada': movEntradaJson,
+            'expDobleContEntrada': contEntrada,
+            'expDobleVacIdEntrada': _extractVacIdFromMovement(
+              movEntradaJson ?? {},
+            ),
+
+            // contenedor1 vuelve al OCR (el de ENTRADA)
             'contenedor1': contenedorOcr,
           });
 
           await LogService.instance
-              .logRequest('OCR_NAV_EXP_DOBLE_AFTER_CONFIRM', {
+              .logRequest('OCR_NAV_EXP_DOBLE_CONFIRM_SALIDA_OK', {
                 'placa': placa,
-                'expMovementCount': expMovementCount,
-                'contenedor': contenedorOcr,
-                'isDoubleContainer': isDoubleContainer,
+                'contSalida': contSalida,
+                'contEntrada': contEntrada,
+                'contenedorOcr': contenedorOcr,
+                'expDobleVacIdEntrada': _extractVacIdFromMovement(
+                  movEntradaJson ?? {},
+                ),
               });
 
           targetScreen = const ExpDobleScreen();
+
+          // ════════════════════════════════════════════════════════════════════
+          // RAMA C: EXP con 1 solo movimiento, sin repesaje → error
+          // ════════════════════════════════════════════════════════════════════
+        } else {
+          final message =
+              'Exportación no válida para doble transacción.\n'
+              'No es repesaje y solo se encontró $expMovementCount '
+              'transacción EXP pendiente.';
+
+          manager.setManyWithoutNotify({
+            'isLoading': false,
+            'transactionType': 'EXP',
+            'muelleTransactionCode': 'EXP',
+            'muelleTransactionName': 'Exportación incompleta',
+            'ocrRouteDestination': 'EXP_INVALID_SINGLE',
+          });
+
+          await LogService.instance
+              .logWarning('OCR_EXP_DOBLE_REQUIRES_TWO_MOVEMENTS', {
+                'placa': placa,
+                'contenedor': contenedorOcr,
+                'expMovementCount': expMovementCount,
+                'isRepesaje': isRepesaje,
+              });
+
+          _failAndNavigateToError(
+            message: message,
+            logTag: 'OCR_EXP_SINGLE_MOVEMENT_NAV_ERROR',
+            extra: {
+              'placa': placa,
+              'contenedor': contenedorOcr,
+              'expMovementCount': expMovementCount,
+            },
+          );
+          return;
         }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // DESCARGA
+        // ══════════════════════════════════════════════════════════════════════
       } else {
         final descargaName = isDoubleContainer
             ? 'Descarga con $containerCount contenedores'
@@ -1317,7 +1482,9 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         });
 
         LogService.instance.logRequest('OCR_NAV_DESCARGA_AUTO', {
-          'placa': placa,
+          'placa': tipoResuelto == 'DESCARGA'
+              ? (_placaSesion ?? manager.vehiculoPlaca ?? '')
+              : '',
           'tipoResuelto': tipoResuelto,
           'containerCount': containerCount,
         });
@@ -1337,7 +1504,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       (route) => false,
     );
   }
-
   // ---------------------------------------------------------------------------
   // HELPERS
   // ---------------------------------------------------------------------------

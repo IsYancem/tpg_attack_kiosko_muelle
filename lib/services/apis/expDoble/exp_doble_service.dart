@@ -1,10 +1,16 @@
-// lib/services/apis/exp_service.dart
+// lib/services/apis/expDoble/exp_doble_service.dart
 // Autor: Abraham Yance
-// Fecha: 2025-12-10
-// Descripción: Servicio para endpoints de EXP (inicializar, guardar, terminar, cancelar)
-// ELIMINADO: imprimir (no es necesario)
+// Descripción: Servicio para los endpoints del controller `exp-muelle-destare`
+//   (inicializar, validar-contenedor, guardar, terminar, ruta).
+//
+// ⚠️ CAMBIO IMPORTANTE:
+//   Todos los endpoints ahora apuntan a `kiosk/api/exp-muelle-destare/*`
+//   (antes apuntaban a `kiosk/api/exp/*`, que NO existe en el backend).
+//   El controller NestJS es @Controller('exp-muelle-destare') bajo el
+//   prefijo global `kiosk/api`.
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
@@ -70,7 +76,6 @@ class ExpDobleService {
   }
 
   /// ✅ POST con auto-refresh
-  // exp_service.dart
   Future<http.Response> _postWithAutoRefresh(
     Uri uri, {
     required String body,
@@ -78,17 +83,13 @@ class ExpDobleService {
   }) async {
     var headers = await _authHeaders();
 
-    // ✅ LOG ANTES DE ENVIAR
     final requestId = DateTime.now().millisecondsSinceEpoch;
-    _log.logRequest(
-      '${tag}_REQUEST',
-      {
-        'uri': uri.toString(),
-        'headers': headers,
-        'body': json.decode(body),
-        'requestId': requestId,
-      },
-    );
+    _log.logRequest('${tag}_REQUEST', {
+      'uri': uri.toString(),
+      'headers': headers,
+      'body': json.decode(body),
+      'requestId': requestId,
+    });
 
     try {
       var res = await http
@@ -99,7 +100,6 @@ class ExpDobleService {
         invalidateHeadersCache();
 
         final appState = AppStateManager.instance;
-
         final refreshed = await AuthApiService.refresh(appState);
         if (refreshed) {
           headers = await _authHeaders();
@@ -126,14 +126,17 @@ class ExpDobleService {
     return url;
   }
 
+  /// Prefijo de todos los endpoints del controller exp-muelle-destare.
+  String get _root => '${_baseUrl}kiosk/api/exp-muelle-destare';
+
   // ═══════════════════════════════════════════════════════════════
-  // INICIALIZAR
+  // INICIALIZAR  →  POST kiosk/api/exp-muelle-destare/inicializar
   // ═══════════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> inicializar(
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) async {
-    final uri = Uri.parse('${_baseUrl}kiosk/api/exp/inicializar');
+    final uri = Uri.parse('$_root/inicializar');
 
     try {
       final body = _buildInicializarRequest(manager, appManager);
@@ -152,8 +155,8 @@ class ExpDobleService {
       final decoded =
           json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
 
-      // Aplicar respuesta
       _applyInicializarResponse(decoded, manager);
+      manager.set('expMuelleInicializarResponse', decoded);
 
       return decoded;
     } catch (e, st) {
@@ -164,13 +167,51 @@ class ExpDobleService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // GUARDAR
+  // VALIDAR CONTENEDOR  →  POST kiosk/api/exp-muelle-destare/validar-contenedor
+  // ═══════════════════════════════════════════════════════════════
+  Future<Map<String, dynamic>> validarContenedor(
+    AtkTransactionManager manager,
+    AppStateManager appManager,
+  ) async {
+    final uri = Uri.parse('$_root/validar-contenedor');
+
+    try {
+      final body = _buildValidarContenedorRequest(manager, appManager);
+      final bodyJson = json.encode(body);
+
+      _log.logRequest('EXP_VALIDAR_CONTENEDOR_PAYLOAD', body);
+
+      final resp = await _postWithAutoRefresh(
+        uri,
+        body: bodyJson,
+        tag: 'EXP_VALIDAR_CONTENEDOR',
+      );
+
+      if (resp.statusCode != 200 && resp.statusCode != 201) {
+        throw ExpDobleServiceException('HTTP ${resp.statusCode}');
+      }
+
+      final decoded =
+          json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+
+      _applyValidarContenedorResponse(decoded, manager);
+
+      return decoded;
+    } catch (e, st) {
+      _log.logError('EXP_VALIDAR_CONTENEDOR_EX', e, st);
+      manager.setError('Error en validar contenedor: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // GUARDAR  →  POST kiosk/api/exp-muelle-destare/guardar
   // ═══════════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> guardar(
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) async {
-    final uri = Uri.parse('${_baseUrl}kiosk/api/exp/guardar');
+    final uri = Uri.parse('$_root/guardar');
 
     try {
       final body = _buildGuardarRequest(manager, appManager);
@@ -191,8 +232,8 @@ class ExpDobleService {
       final decoded =
           json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
 
-      // Aplicar respuesta
       _applyGuardarResponse(decoded, manager);
+      manager.set('expMuelleGuardarResponse', decoded);
 
       return decoded;
     } catch (e, st) {
@@ -203,19 +244,56 @@ class ExpDobleService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // RUTA (Consultar proyección y generar ticket)
+  // TERMINAR  →  POST kiosk/api/exp-muelle-destare/terminar
+  // ═══════════════════════════════════════════════════════════════
+  Future<Map<String, dynamic>> terminar(
+    AtkTransactionManager manager,
+    AppStateManager appManager,
+  ) async {
+    final uri = Uri.parse('$_root/terminar');
+
+    try {
+      final body = _buildTerminarRequest(manager, appManager);
+      final bodyJson = json.encode(body);
+
+      _log.logRequest('EXP_TERMINAR_PAYLOAD', body);
+
+      final resp = await _postWithAutoRefresh(
+        uri,
+        body: bodyJson,
+        tag: 'EXP_TERMINAR',
+      );
+
+      if (resp.statusCode != 200 && resp.statusCode != 201) {
+        throw ExpDobleServiceException('HTTP ${resp.statusCode}');
+      }
+
+      final decoded =
+          json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+
+      manager.set('expMuelleTerminarResponse', decoded);
+
+      return decoded;
+    } catch (e, st) {
+      _log.logError('EXP_TERMINAR_EX', e, st);
+      manager.setError('Error en terminar: $e');
+      rethrow;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // RUTA  →  POST kiosk/api/exp-muelle-destare/ruta
   // ═══════════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> ruta(
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) async {
-    final uri = Uri.parse('${_baseUrl}kiosk/api/exp/ruta');
+    final uri = Uri.parse('$_root/ruta');
 
     try {
       final body = _buildRutaRequest(manager, appManager);
       final bodyJson = json.encode(body);
 
-      /// 🔥 LOG FORMAL EN LogService
       _log.logRequest('EXP_RUTA_PAYLOAD', body);
 
       final resp = await _postWithAutoRefresh(
@@ -239,114 +317,21 @@ class ExpDobleService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // BUILD RUTA REQUEST
-  // ═══════════════════════════════════════════════════════════════
-  // En _buildRutaRequest de ExpDobleService:
-  Map<String, dynamic> _buildRutaRequest(
-    AtkTransactionManager manager,
-    AppStateManager appManager,
-  ) {
-    return {
-      'contenedor': manager.contenedor1 ?? manager.contenedorExp ?? '',
-      'booking': manager.bookingExp,
-      'placa': _safePlaca(manager),
-      'danios': manager.daniosExp ?? manager.vehiculoObservaciones ?? '',
-      'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
-      'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
-      'deviceId': appManager.kioskConfig?.gate,
-      'ip': appManager.kioskConfig?.kioskServer,
-    };
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // TERMINAR
-  // ═══════════════════════════════════════════════════════════════
-  Future<Map<String, dynamic>> terminar(
-    AtkTransactionManager manager,
-    AppStateManager appManager,
-  ) async {
-    final uri = Uri.parse('${_baseUrl}kiosk/api/exp/terminar');
-
-    try {
-      final body = _buildTerminarRequest(manager, appManager);
-      final bodyJson = json.encode(body);
-
-      /// 🔥 LOG FORMAL EN LogService
-      _log.logRequest('EXP_TERMINAR_PAYLOAD', body);
-
-      final resp = await _postWithAutoRefresh(
-        uri,
-        body: bodyJson,
-        tag: 'EXP_TERMINAR',
-      );
-
-      if (resp.statusCode != 200 && resp.statusCode != 201) {
-        throw ExpDobleServiceException('HTTP ${resp.statusCode}');
-      }
-
-      final decoded =
-          json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-
-      return decoded;
-    } catch (e, st) {
-      _log.logError('EXP_TERMINAR_EX', e, st);
-      manager.setError('Error en terminar: $e');
-      rethrow;
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // CANCELAR
-  // ═══════════════════════════════════════════════════════════════
- /* Future<Map<String, dynamic>> cancelar(
-    AtkTransactionManager manager,
-    AppStateManager appManager,
-  ) async {
-    final uri = Uri.parse('${_baseUrl}kiosk/api/exp/cancelar');
-
-    try {
-      final body = _buildCancelarRequest(manager, appManager);
-      final bodyJson = json.encode(body);
-
-      final resp = await _postWithAutoRefresh(
-        uri,
-        body: bodyJson,
-        tag: 'EXP_CANCELAR',
-      );
-
-      if (resp.statusCode != 200 && resp.statusCode != 201) {
-        throw ExpDobleServiceException('HTTP ${resp.statusCode}');
-      }
-
-      final decoded =
-          json.decode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-
-      _log.logRequest('EXP_CANCELAR_OK', {'message': decoded['message']});
-
-      return decoded;
-    } catch (e, st) {
-      _log.logError('EXP_CANCELAR_EX', e, st);
-      // No lanzar excepción aquí, cancelar es best-effort
-      return {'errorCode': 1, 'message': 'Error en cancelar: $e', 'data': null};
-    }
-  }
-*/
-
-  // ═══════════════════════════════════════════════════════════════
   // BUILD REQUESTS
   // ═══════════════════════════════════════════════════════════════
+
+  /// Contenedor "activo" de la transacción en curso. El runner deja
+  /// `contenedor1` apuntando al contenedor que se está procesando.
+  String _contenedorActivo(AtkTransactionManager manager) {
+    return (manager.contenedor1 ?? manager.contenedorExp ?? '')
+        .trim()
+        .toUpperCase();
+  }
+
   Map<String, dynamic> _buildInicializarRequest(
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) {
-    final now = DateTime.now();
-    final fechaBarrera =
-        '${now.year}${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')} '
-        '${now.hour.toString().padLeft(2, '0')}:'
-        '${now.minute.toString().padLeft(2, '0')}:'
-        '${now.second.toString().padLeft(2, '0')}';
-
     return {
       'placa': _safePlaca(manager),
       'cedula': manager.driverCedula ?? '',
@@ -356,9 +341,9 @@ class ExpDobleService {
       'garitaLetra': appManager.kioskConfig?.gateLetter ?? 'A',
       'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
       'doorNumber': 1,
-      'fechaBarrera': fechaBarrera,
+      'fechaBarrera': _fechaBarrera(),
       'tipoMov': 'EXP',
-      'contenedor': manager.contenedor1 ?? manager.contenedorExp,
+      'contenedor': _contenedorActivo(manager),
       'buqueDisv': manager.naveExp,
       'bookingDisv': manager.bookingExp,
       'clienteDisv': manager.clienteExp,
@@ -374,30 +359,36 @@ class ExpDobleService {
     };
   }
 
+  /// El endpoint validar-contenedor solo necesita:
+  ///   { contenedor, placa, cedula, vehicleAccessId }
+  Map<String, dynamic> _buildValidarContenedorRequest(
+    AtkTransactionManager manager,
+    AppStateManager appManager,
+  ) {
+    return {
+      'contenedor': _contenedorActivo(manager),
+      'placa': _safePlaca(manager),
+      'cedula': (manager.driverCedula ?? '').trim().toUpperCase(),
+      'vehicleAccessId': int.tryParse(manager.atkId ?? '0'),
+    };
+  }
+
   Map<String, dynamic> _buildGuardarRequest(
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) {
-    final now = DateTime.now();
-    final fechaBarrera =
-        '${now.year}${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')} '
-        '${now.hour.toString().padLeft(2, '0')}:'
-        '${now.minute.toString().padLeft(2, '0')}:'
-        '${now.second.toString().padLeft(2, '0')}';
-
     return {
       'placa': _safePlaca(manager),
       'cedula': manager.driverCedula ?? '',
       'nombreConductor': manager.driverName ?? '',
-      'vehicleAccessId': manager.atkId ?? 0, 
+      'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
       'tpg': int.tryParse(appManager.kioskConfig?.patio ?? '1') ?? 1,
       'garitaLetra': appManager.kioskConfig?.gateLetter ?? 'A',
       'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
       'doorNumber': 1,
-      'fechaBarrera': fechaBarrera,
+      'fechaBarrera': _fechaBarrera(),
       'tipoMov': 'EXP',
-      'contenedor': manager.contenedor1 ?? manager.contenedorExp ?? '',
+      'contenedor': _contenedorActivo(manager),
       'contenedorDisv': manager.contenedorExp,
       'booking': manager.bookingExp,
       'tara': double.tryParse(manager.pesoTara ?? '0') ?? 0,
@@ -425,13 +416,12 @@ class ExpDobleService {
       'garitaOut': 2,
       'observaciones': '',
       'pesoBulto': 0,
-      'ip': appManager.kioskConfig?.kioskServer ?? '', // ✅ agregado
-      'idTraslados': manager.idTraslados ?? 0, // ✅ agregado
+      'ip': appManager.kioskConfig?.kioskServer ?? '',
+      'idTraslados': manager.idTraslados ?? 0,
       'pesoContenedor':
-          double.tryParse(manager.pesoActualBascula.toString()) ??
-          0, // ✅ agregado
-      'aniodisv': manager.aniodisv ?? DateTime.now().year, // ✅ agregado
-      'numdisv': manager.numdisv ?? 0, // ✅ agregado
+          double.tryParse(manager.pesoActualBascula.toString()) ?? 0,
+      'aniodisv': manager.aniodisv ?? DateTime.now().year,
+      'numdisv': manager.numdisv ?? 0,
     };
   }
 
@@ -439,14 +429,6 @@ class ExpDobleService {
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) {
-    final now = DateTime.now();
-    final fechaBarrera =
-        '${now.year}${now.month.toString().padLeft(2, '0')}'
-        '${now.day.toString().padLeft(2, '0')} '
-        '${now.hour.toString().padLeft(2, '0')}:'
-        '${now.minute.toString().padLeft(2, '0')}:'
-        '${now.second.toString().padLeft(2, '0')}';
-
     return {
       'placa': _safePlaca(manager),
       'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
@@ -457,7 +439,7 @@ class ExpDobleService {
       'pesoSalida': null,
       'pesoIngreso': manager.pesoActualBascula,
       'tara': double.tryParse(manager.pesoTara ?? '0') ?? 0,
-      'contenedor': manager.contenedor1 ?? manager.contenedorExp,
+      'contenedor': _contenedorActivo(manager),
       'booking': manager.bookingExp,
       'cedula': manager.driverCedula,
       'nombreConductor': manager.driverName,
@@ -470,32 +452,26 @@ class ExpDobleService {
       'doorNumber': 1,
       'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
       'tipoMov': 'EXP',
-      'fechaBarrera': fechaBarrera,
+      'fechaBarrera': _fechaBarrera(),
       'bodegueroUser': KioskUserEnv.usuario,
     };
   }
 
-  /* Map<String, dynamic> _buildCancelarRequest(
+  Map<String, dynamic> _buildRutaRequest(
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) {
     return {
+      'contenedor': _contenedorActivo(manager),
+      'booking': manager.bookingExp,
       'placa': _safePlaca(manager),
-      'numTrans': int.tryParse(manager.atkId ?? '0') ?? 0,
+      'danios': manager.daniosExp ?? manager.vehiculoObservaciones ?? '',
+      'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
       'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
-      'btnGuardarEnabled': false,
-      'pesoSalida': null,
-      'pesoIngreso': manager.pesoActualBascula,
-      'cedula': manager.driverCedula,
-      'nombreConductor': manager.driverName,
-      'cargaIMO': manager.vehiculoCargaImo,
-      'garitaLetra': appManager.kioskConfig?.gateLetter ?? 'A',
-      'usuarioNombre': KioskUserEnv.usuario,
-      'emailJefe': KioskUserEnv.usuario,
+      'deviceId': appManager.kioskConfig?.gate,
       'ip': appManager.kioskConfig?.kioskServer,
-      'observacionPedirAut': manager.errorMessage,
     };
-  } */
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // APPLY RESPONSES
@@ -511,63 +487,83 @@ class ExpDobleService {
     }
 
     final data = response['data'] as Map<String, dynamic>?;
-    if (data == null) {
-      return;
-    }
+    if (data == null) return;
 
     final allData = <String, dynamic>{};
 
-    // Datos básicos
     if (data['numtrans'] != null) {
       allData['atkId'] = data['numtrans'].toString();
     }
-
     if (data['estado'] != null) {
+      allData['expMuelleEstado'] = data['estado'];
       allData['mensajeInferior'] = 'Estado: ${data['estado']}';
     }
-
     if (data['tara'] != null) {
       allData['pesoTara'] = data['tara'].toString();
     }
-
     if (data['pesoIngreso'] != null) {
       allData['pesoIngreso'] = data['pesoIngreso'].toString();
     }
-
     if (data['contenedor'] != null) {
       allData['contenedor1'] = data['contenedor'];
       allData['contenedorExp'] = data['contenedor'];
     }
 
-    // Sellos
     final sellos = data['sellos'] as List?;
     if (sellos != null && sellos.isNotEmpty) {
-      if (sellos.length > 0 && sellos[0] != null)
+      if (sellos.isNotEmpty && sellos[0] != null) {
         allData['sello1Exp'] = sellos[0];
-      if (sellos.length > 1 && sellos[1] != null)
+      }
+      if (sellos.length > 1 && sellos[1] != null) {
         allData['sello2Exp'] = sellos[1];
-      if (sellos.length > 2 && sellos[2] != null)
+      }
+      if (sellos.length > 2 && sellos[2] != null) {
         allData['sello3Exp'] = sellos[2];
-      if (sellos.length > 3 && sellos[3] != null)
+      }
+      if (sellos.length > 3 && sellos[3] != null) {
         allData['sello4Exp'] = sellos[3];
+      }
     }
 
-    // DISV
     final disv = data['disv'] as Map<String, dynamic>?;
     if (disv != null) {
       if (disv['cliente'] != null) allData['clienteExp'] = disv['cliente'];
       if (disv['producto'] != null) allData['productoExp'] = disv['producto'];
-      if (disv['tipoCarga'] != null)
+      if (disv['tipoCarga'] != null) {
         allData['vehiculoTipoCarga'] = disv['tipoCarga'];
-      if (disv['cargaIMO'] != null)
+      }
+      if (disv['cargaIMO'] != null) {
         allData['vehiculoCargaImo'] = disv['cargaIMO'];
-      if (disv['refrigerado'] != null)
+      }
+      if (disv['refrigerado'] != null) {
         allData['vehiculoRefrigerado'] = disv['refrigerado'];
+      }
       if (disv['booking'] != null) allData['bookingExp'] = disv['booking'];
       if (disv['buque'] != null) allData['naveExp'] = disv['buque'];
     }
 
     manager.setMany(allData);
+  }
+
+  void _applyValidarContenedorResponse(
+    Map<String, dynamic> response,
+    AtkTransactionManager manager,
+  ) {
+    final data = response['data'] as Map<String, dynamic>?;
+    final esValido = (data?['esValido'] as bool?) ?? (response['errorCode'] == 0);
+
+    manager.setManyWithoutNotify({
+      'expMuelleValidarContenedorOk': esValido,
+      'expMuelleContenedorValidado':
+          data?['contenedorValidado'] ?? _contenedorActivo(manager),
+    });
+
+    if (!esValido) {
+      final msg = (data?['mensajeError'] as String?) ??
+          (response['message'] as String?) ??
+          'El contenedor no coincide con el DISV.';
+      manager.setError(msg);
+    }
   }
 
   void _applyGuardarResponse(
@@ -581,21 +577,39 @@ class ExpDobleService {
 
     final data = response['data'] as Map<String, dynamic>?;
     if (data == null) return;
+
+    if (data['numero'] != null) {
+      manager.set('expMuelleGuardarNumero', data['numero']);
+    }
+    manager.set('expMuelleGuardarOk', true);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════════════════════
+
+  String _fechaBarrera() {
+    final now = DateTime.now();
+    return '${now.year}${now.month.toString().padLeft(2, '0')}'
+        '${now.day.toString().padLeft(2, '0')} '
+        '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}';
   }
 
   String _safePlaca(AtkTransactionManager manager) {
-  final values = [
-    manager.vehiculoPlaca,
-    manager.get('placa'),
-    manager.get('rfidPlaca'),
-    manager.get('conseguirConductorPlaca'),
-  ];
+    final values = [
+      manager.vehiculoPlaca,
+      manager.get('placa'),
+      manager.get('rfidPlaca'),
+      manager.get('conseguirConductorPlaca'),
+    ];
 
-  for (final v in values) {
-    final s = (v ?? '').toString().trim().toUpperCase();
-    if (s.isNotEmpty) return s;
+    for (final v in values) {
+      final s = (v ?? '').toString().trim().toUpperCase();
+      if (s.isNotEmpty) return s;
+    }
+
+    return '';
   }
-
-  return '';
-}
 }

@@ -1,12 +1,8 @@
-// lib/screens/exp_incoming/exp_incoming_screen.dart
-// Autor: Abraham Yance
-// Fecha: 2025-12-10
-// OPTIMIZADO - Con runner de transacción EXP completo
-// FIX: Ejecutar runner solo UNA VEZ desde initState
-
+// lib/screens/muelle/expDoble_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tpg_attack_kiosko_muelle/config/incoming/exp_incoming_visibility_config.dart';
+import 'package:tpg_attack_kiosko_muelle/screens/auth/ocrScanner_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/expDoble/exp_doble_transaction_runner.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/staapisac_api_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
@@ -38,77 +34,84 @@ class _ExpDobleScreenBody extends StatefulWidget {
 
 class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
     with TickerProviderStateMixin {
-  ExpDobleTransactionRunner? _runner;
-  bool _runnerExecuting = false; // ⬅️ Flag atómico
+  bool _runnerStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _runner = ExpDobleTransactionRunner();
 
-    // ✅ Ejecutar UNA SOLA VEZ después del primer frame
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final appState = context.read<AppStateManager>();
       final txn = context.read<AtkTransactionManager>();
 
-      _executeRunner();
+      txn.setManyWithoutNotify({
+        'isLoading': true,
+        'expDobleScreenReady': true,
+        'mensajeInferior':
+            'Transacción de salida confirmada.\nProcesando doble exportación...',
+      });
 
-      // 1) Cargar foto luego (ya con cédula correcta desde init)
-      final id = (txn.driverCedula ?? '').trim();
-      if (id.isEmpty) return;
+      if (mounted) setState(() {});
 
-      final sta = StaapisacApiService();
-      try {
-        final imgB64 = await sta.getFotoChoferBase64(
-          appState: appState,
-          choferId: id,
-        );
-        if (!mounted) return;
+      // Cargar foto del conductor (no bloquea el flujo).
+      _cargarFotoConductor(appState, txn);
 
-        if (imgB64 != null && imgB64.isNotEmpty) {
-          txn.setDriverPhotoUrl(imgB64);
-        }
-      } catch (e, st) {
-        await LogService.instance.logError('EXP_LOAD_PHOTO_FAIL', e, st);
-        if (!mounted) return;
-      }
+      // Lanzar el flujo doble completo una sola vez.
+      await _lanzarRunner(appState, txn);
     });
   }
 
-  // exp_incoming_screen.dart
-  void _executeRunner() {
-    print(
-      '📍 [EXP_SCREEN] _executeRunner() llamado - ${DateTime.now().toIso8601String()}',
-    );
+  Future<void> _cargarFotoConductor(
+    AppStateManager appState,
+    AtkTransactionManager txn,
+  ) async {
+    final id = (txn.driverCedula ?? '').trim();
+    if (id.isEmpty) return;
 
-    if (_runnerExecuting) {
-      print(
-        '⚠️ [EXP_SCREEN] Runner ya está ejecutándose, RECHAZANDO llamada duplicada',
+    final sta = StaapisacApiService();
+    try {
+      final imgB64 = await sta.getFotoChoferBase64(
+        appState: appState,
+        choferId: id,
       );
-      return;
+      if (!mounted) return;
+      if (imgB64 != null && imgB64.isNotEmpty) {
+        txn.setDriverPhotoUrl(imgB64);
+      }
+    } catch (e, st) {
+      await LogService.instance.logError('EXP_DOBLE_LOAD_PHOTO_FAIL', e, st);
     }
+  }
 
-    print('🚀 [EXP_SCREEN] Iniciando runner (flag=false→true)');
-    _runnerExecuting = true;
+  Future<void> _lanzarRunner(
+    AppStateManager appState,
+    AtkTransactionManager txn,
+  ) async {
+    if (_runnerStarted) return;
+    _runnerStarted = true;
 
-    final appManager = context.read<AppStateManager>();
-    final manager = context.read<AtkTransactionManager>();
+    final runner = ExpDobleTransactionRunner();
 
-    manager.setManyWithoutNotify({
-      'isLoading': true,
-      'mensajeInferior': 'Procesando transacción EXP...\nPor favor espere.',
-    });
-
-    _runner!
-        .run(context: context, appManager: appManager, manager: manager)
-        .then((_) {
-          print('✅ [EXP_SCREEN] Runner completado exitosamente');
-          _runnerExecuting = false;
-        })
-        .catchError((e, st) {
-          print('❌ [EXP_SCREEN] Error en runner: $e');
-          _runnerExecuting = false;
-        });
+    await runner.run(
+      context: context,
+      appManager: appState,
+      manager: txn,
+      onFinished: () {
+        if (!mounted) return;
+        // Paso 13: limpiar la data restante y navegar al OCR.
+        txn.resetAll();
+        Navigator.pushAndRemoveUntil(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const OcrScannerScreen(),
+            transitionDuration: const Duration(milliseconds: 150),
+            transitionsBuilder: (_, animation, __, child) =>
+                FadeTransition(opacity: animation, child: child),
+          ),
+          (route) => false,
+        );
+      },
+    );
   }
 
   @override
@@ -125,45 +128,43 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
       backgroundColor: p.bg,
       body: Column(
         children: [
-          // Header con Selector
           if (ExpIncomingVisibilityConfig.show['header.titulo'] ?? true)
             Selector<AtkTransactionManager, int?>(
               selector: (_, m) => m.flowRemainingSeconds,
               builder: (context, flowRemaining, _) {
-                final headerCountdownSeconds =
-                    (ExpIncomingVisibilityConfig.show['header.countdown'] ??
-                        true)
-                    ? (flowRemaining ?? 300)
-                    : 0;
                 return AtkHeaderTransaction(
                   title: 'DOBLE EXPORTACIÓN FULL',
                   height: hHeader,
                   assetImagePath:
                       ExpIncomingVisibilityConfig.show['header.logo'] ?? true
-                      ? 'assets/images/tpg_logo.png'
-                      : null,
-                  initialCountdownSeconds: headerCountdownSeconds,
+                          ? 'assets/images/tpg_logo.png'
+                          : null,
+                  initialCountdownSeconds: flowRemaining ?? 300,
                   onModeChanged: (isLight) =>
                       context.read<AppStateManager>().setLight(isLight),
                 );
               },
             ),
 
-          // Subheader con Selector
+          // Subheader: muestra el conductor y, ahora, el contenedor activo.
           if (ExpIncomingVisibilityConfig.show['subheader.textoDespacho'] ??
               true)
             Selector<AtkTransactionManager, String?>(
-              selector: (_, m) => m.driverName,
-              builder: (context, driverName, _) {
+              selector: (_, m) {
+                final activo =
+                    (m.get('expDobleContenedorActivo') as String?) ?? '';
+                final driver = m.driverName ?? '';
+                return activo.isEmpty ? driver : '$driver — $activo';
+              },
+              builder: (context, personName, _) {
                 return AtkSubHeaderBarTransaction(
                   height: hSubHeader,
-                  personName: driverName ?? '',
+                  personName: personName ?? '',
                   flowType: FlowType.entrada,
                 );
               },
             ),
 
-          // Body
           if ((ExpIncomingVisibilityConfig.show['col1.driver'] ?? true) ||
               (ExpIncomingVisibilityConfig.show['col2.importador'] ?? true) ||
               (ExpIncomingVisibilityConfig.show['col3.mapa'] ?? true))
@@ -181,7 +182,8 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
                       const Expanded(flex: 25, child: Columna1DriverExp()),
                     if ((ExpIncomingVisibilityConfig.show['col1.driver'] ??
                             true) &&
-                        ((ExpIncomingVisibilityConfig.show['col2.importador'] ??
+                        ((ExpIncomingVisibilityConfig
+                                    .show['col2.importador'] ??
                                 true) ||
                             (ExpIncomingVisibilityConfig.show['col3.mapa'] ??
                                 true)))
@@ -200,7 +202,6 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
               ),
             ),
 
-          // Footer
           if (ExpIncomingVisibilityConfig.show['footer.toggleTheme'] ?? true)
             AtkFooterBarCommon(
               height: hFooter,
