@@ -82,13 +82,15 @@ class ExpDobleTransactionRunner {
       'driverCedula': manager.driverCedula,
       'totalContenedores': jobs.length,
       'jobs': jobs
-          .map((j) => {
-                'index': j.index,
-                'etiqueta': j.etiqueta,
-                'contenedor': j.contenedor,
-                'vehicleAccessId': j.vehicleAccessId,
-                'confirmHecho': j.confirmHecho,
-              })
+          .map(
+            (j) => {
+              'index': j.index,
+              'etiqueta': j.etiqueta,
+              'contenedor': j.contenedor,
+              'vehicleAccessId': j.vehicleAccessId,
+              'confirmHecho': j.confirmHecho,
+            },
+          )
           .toList(),
     });
 
@@ -218,7 +220,7 @@ class ExpDobleTransactionRunner {
     required AtkTransactionManager manager,
     required _ContenedorJob job,
   }) async {
-    // Dejar al manager apuntando a ESTE contenedor para todos los builders.
+    // Dejar al manager apuntando a ESTE contenedor
     manager.setMany({
       'isLoading': true,
       'contenedor1': job.contenedor,
@@ -228,6 +230,7 @@ class ExpDobleTransactionRunner {
       'expDobleMovimientoIndex': job.index,
       'expDobleContenedorActivo': job.contenedor,
       'expDobleContenedorIndexActivo': job.index,
+      'expDobleVacIdActivo': job.vehicleAccessId,
       if (job.vehicleAccessId > 0) 'atkId': job.vehicleAccessId.toString(),
       if (job.vehicleAccessId > 0)
         'ocrDiSvVehicleAccessId': job.vehicleAccessId.toString(),
@@ -235,15 +238,18 @@ class ExpDobleTransactionRunner {
           '${job.etiqueta}: ${job.contenedor}\nIniciando transacción...',
     });
 
-    // ── PASO 1: CONFIRM ────────────────────────────────────────────────────
+    // ── PASO 1: CONFIRM (solo si no se hizo antes)
     if (!job.confirmHecho) {
       manager.setMany({
         'isLoading': true,
         'mensajeInferior': '${job.etiqueta}: ${job.contenedor}\nConfirmando...',
       });
 
-      final confirmRaw =
-          await _confirmSvc.ejecutarConfirmMuelle(manager, appManager, 'EXP');
+      final confirmRaw = await _confirmSvc.ejecutarConfirmMuelle(
+        manager,
+        appManager,
+        'EXP',
+      );
 
       final errorCode = _int(confirmRaw['errorCode']) ?? 1;
       if (errorCode != 0 || manager.hasError) {
@@ -257,23 +263,25 @@ class ExpDobleTransactionRunner {
 
       _aplicarDisvDesdeConfirm(confirmRaw, manager, job.contenedor);
     } else {
-      // El confirm ya se hizo (SALIDA en OCR): reutilizar su respuesta para
-      // poblar el DISV de ESTE contenedor.
+      // Reutilizar confirm SALIDA
       if (job.confirmResponse != null) {
         _aplicarDisvDesdeConfirm(job.confirmResponse!, manager, job.contenedor);
       }
     }
 
-    // Volver a fijar el contenedor/atkId por si el confirm los cambió.
+    // Volver a fijar contenedor + id real por si confirm/inicializar los cambió
     manager.setManyWithoutNotify({
       'contenedor1': job.contenedor,
       'contenedorExp': job.contenedor,
+      'expDobleVacIdActivo': job.vehicleAccessId,
       if (job.vehicleAccessId > 0) 'atkId': job.vehicleAccessId.toString(),
+      if (job.vehicleAccessId > 0)
+        'ocrDiSvVehicleAccessId': job.vehicleAccessId.toString(),
       'transactionType': 'EXP',
       'muelleTransactionCode': 'EXP',
     });
 
-    // ── PASO 2: INICIALIZAR ────────────────────────────────────────────────
+    // ── PASO 2: INICIALIZAR
     manager.setMany({
       'isLoading': true,
       'mensajeInferior': '${job.etiqueta}: ${job.contenedor}\nInicializando...',
@@ -281,7 +289,7 @@ class ExpDobleTransactionRunner {
     await _expSvc.inicializar(manager, appManager);
     _abortarSiError(manager, 'inicializar', job);
 
-    // ── PASO 3: VALIDAR CONTENEDOR ─────────────────────────────────────────
+    // ── PASO 3: VALIDAR CONTENEDOR
     manager.setMany({
       'isLoading': true,
       'mensajeInferior':
@@ -290,15 +298,20 @@ class ExpDobleTransactionRunner {
     await _expSvc.validarContenedor(manager, appManager);
     _abortarSiError(manager, 'validar-contenedor', job);
 
-    // ── PASO 4: GUARDAR ────────────────────────────────────────────────────
+    // ── PASO 4: GUARDAR
     manager.setMany({
       'isLoading': true,
       'mensajeInferior': '${job.etiqueta}: ${job.contenedor}\nGuardando...',
+      // Asignar pesos según tipo de contenedor
+      'pesoIngreso': job.index == 0
+          ? manager.pesoIngreso
+          : manager.pesoActualBascula,
+      'pesoSalida': job.index == 1 ? manager.pesoActualBascula : null,
     });
     await _expSvc.guardar(manager, appManager);
     _abortarSiError(manager, 'guardar', job);
 
-    // ── PASO 5: TERMINAR ───────────────────────────────────────────────────
+    // ── PASO 5: TERMINAR
     manager.setMany({
       'isLoading': true,
       'mensajeInferior': '${job.etiqueta}: ${job.contenedor}\nTerminando...',
@@ -333,26 +346,35 @@ class ExpDobleTransactionRunner {
   List<_ContenedorJob> _construirJobs(AtkTransactionManager manager) {
     final jobs = <_ContenedorJob>[];
 
-    final contSalida =
-        (manager.get('expDobleContSalida') as String? ?? '').trim().toUpperCase();
-    final contEntrada = (manager.get('expDobleContEntrada') as String? ??
-            manager.contenedor1 ??
-            '')
+    final contSalida = (manager.get('expDobleContSalida') as String? ?? '')
         .trim()
         .toUpperCase();
+    final contEntrada =
+        (manager.get('expDobleContEntrada') as String? ??
+                manager.contenedor1 ??
+                '')
+            .trim()
+            .toUpperCase();
 
     final movSalida =
         (manager.get('expDobleMovSalida') as Map<String, dynamic>?) ??
-            (manager.get('movement_active') as Map<String, dynamic>?) ??
-            <String, dynamic>{};
+        (manager.get('movement_active') as Map<String, dynamic>?) ??
+        <String, dynamic>{};
     final movEntrada =
         (manager.get('expDobleMovEntrada') as Map<String, dynamic>?) ??
-            <String, dynamic>{};
+        <String, dynamic>{};
 
-    final vacIdSalida = _int(manager.get('expDobleVacIdSalida')) ??
+    // vehicleAccessId = id REAL del acceso vehicular. Prioridad:
+    //   1) clave explícita expDobleVacId*  2) id dentro del movimiento  3) atkId
+    final vacIdSalida =
+        _int(manager.get('expDobleVacIdSalida')) ??
+        _extractVacId(movSalida) ??
         _int(manager.atkId) ??
         0;
-    final vacIdEntrada = _int(manager.get('expDobleVacIdEntrada')) ?? 0;
+    final vacIdEntrada =
+        _int(manager.get('expDobleVacIdEntrada')) ??
+        _extractVacId(movEntrada) ??
+        0;
 
     final confirmSalidaOk =
         (manager.get('expDobleConfirmSalidaOk') as bool?) ?? false;
@@ -360,27 +382,31 @@ class ExpDobleTransactionRunner {
         manager.get('expDobleConfirmSalidaResponse') as Map<String, dynamic>?;
 
     if (contSalida.isNotEmpty) {
-      jobs.add(_ContenedorJob(
-        index: 0,
-        etiqueta: 'SALIDA',
-        contenedor: contSalida,
-        vehicleAccessId: vacIdSalida,
-        movement: movSalida,
-        // Si OCR ya confirmó la salida, no repetimos el confirm.
-        confirmHecho: confirmSalidaOk && confirmSalidaResp != null,
-        confirmResponse: confirmSalidaResp,
-      ));
+      jobs.add(
+        _ContenedorJob(
+          index: 0,
+          etiqueta: 'SALIDA',
+          contenedor: contSalida,
+          vehicleAccessId: vacIdSalida,
+          movement: movSalida,
+          // Si OCR ya confirmó la salida, no repetimos el confirm.
+          confirmHecho: confirmSalidaOk && confirmSalidaResp != null,
+          confirmResponse: confirmSalidaResp,
+        ),
+      );
     }
 
     if (contEntrada.isNotEmpty && contEntrada != contSalida) {
-      jobs.add(_ContenedorJob(
-        index: 1,
-        etiqueta: 'ENTRADA',
-        contenedor: contEntrada,
-        vehicleAccessId: vacIdEntrada,
-        movement: movEntrada,
-        confirmHecho: false, // el segundo SIEMPRE arranca desde confirm.
-      ));
+      jobs.add(
+        _ContenedorJob(
+          index: 1,
+          etiqueta: 'ENTRADA',
+          contenedor: contEntrada,
+          vehicleAccessId: vacIdEntrada,
+          movement: movEntrada,
+          confirmHecho: false, // el segundo SIEMPRE arranca desde confirm.
+        ),
+      );
     }
 
     return jobs;
@@ -485,8 +511,7 @@ class ExpDobleTransactionRunner {
         if (str(disv['nombre']) != null) 'clienteExp': str(disv['nombre']),
         if (str(disv['tipocarga']) != null)
           'vehiculoTipoCarga': str(disv['tipocarga']),
-        if (str(disv['producto']) != null)
-          'productoExp': str(disv['producto']),
+        if (str(disv['producto']) != null) 'productoExp': str(disv['producto']),
         if (str(disv['booking']) != null) 'bookingExp': str(disv['booking']),
         if (str(disv['nave']) != null) 'naveExp': str(disv['nave']),
         if (str(disv['numcontenedor']) != null)
@@ -505,8 +530,7 @@ class ExpDobleTransactionRunner {
           'vehiculoObservaciones': str(disv['observaciones']),
         if (intVal(disv['aniodisv']) != null)
           'aniodisv': intVal(disv['aniodisv']),
-        if (intVal(disv['numdisv']) != null)
-          'numdisv': intVal(disv['numdisv']),
+        if (intVal(disv['numdisv']) != null) 'numdisv': intVal(disv['numdisv']),
       };
 
       manager.setMany(fields);
@@ -528,5 +552,20 @@ class ExpDobleTransactionRunner {
     if (v is int) return v;
     if (v is num) return v.toInt();
     return int.tryParse(v.toString().trim());
+  }
+
+  /// Extrae el id del acceso vehicular desde el JSON del movimiento.
+  /// Mismo orden de búsqueda que OcrScannerScreen._extractVacIdFromMovement.
+  int? _extractVacId(Map<String, dynamic> m) {
+    if (m.isEmpty) return null;
+    final raw =
+        m['vehicleAccessId'] ??
+        m['vehicle_access_id'] ??
+        m['atk_id'] ??
+        m['registro'] ??
+        m['id'] ??
+        (m['raw'] as Map<String, dynamic>?)?['id'];
+    final v = int.tryParse(raw?.toString() ?? '');
+    return (v != null && v > 0) ? v : null;
   }
 }

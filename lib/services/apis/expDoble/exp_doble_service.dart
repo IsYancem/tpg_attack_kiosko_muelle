@@ -328,6 +328,21 @@ class ExpDobleService {
         .toUpperCase();
   }
 
+  /// ⚠️ ID REAL del acceso vehicular (el `id` del movimiento DISV, ej. 48006837).
+  ///
+  /// NUNCA se debe usar `manager.atkId` para esto: `inicializar` sobreescribe
+  /// `atkId` con el `numtrans` del SP, así que después de inicializar `atkId`
+  /// ya NO es el vehicleAccessId. El runner deja el id real en
+  /// `ocrDiSvVehicleAccessId` (y en `expDobleVacIdActivo`) por contenedor.
+  int _vehicleAccessId(AtkTransactionManager manager) {
+    final raw =
+        (manager.get('ocrDiSvVehicleAccessId')?.toString().trim().isNotEmpty ??
+                false)
+            ? manager.get('ocrDiSvVehicleAccessId').toString().trim()
+            : (manager.get('expDobleVacIdActivo')?.toString().trim() ?? '0');
+    return int.tryParse(raw) ?? 0;
+  }
+
   Map<String, dynamic> _buildInicializarRequest(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -336,7 +351,7 @@ class ExpDobleService {
       'placa': _safePlaca(manager),
       'cedula': manager.driverCedula ?? '',
       'nombreConductor': manager.driverName ?? '',
-      'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
+      'vehicleAccessId': _vehicleAccessId(manager),
       'tpg': int.tryParse(appManager.kioskConfig?.patio ?? '1') ?? 1,
       'garitaLetra': appManager.kioskConfig?.gateLetter ?? 'A',
       'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
@@ -369,7 +384,7 @@ class ExpDobleService {
       'contenedor': _contenedorActivo(manager),
       'placa': _safePlaca(manager),
       'cedula': (manager.driverCedula ?? '').trim().toUpperCase(),
-      'vehicleAccessId': int.tryParse(manager.atkId ?? '0'),
+      'vehicleAccessId': _vehicleAccessId(manager),
     };
   }
 
@@ -381,7 +396,7 @@ class ExpDobleService {
       'placa': _safePlaca(manager),
       'cedula': manager.driverCedula ?? '',
       'nombreConductor': manager.driverName ?? '',
-      'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
+      'vehicleAccessId': _vehicleAccessId(manager),
       'tpg': int.tryParse(appManager.kioskConfig?.patio ?? '1') ?? 1,
       'garitaLetra': appManager.kioskConfig?.gateLetter ?? 'A',
       'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
@@ -403,8 +418,6 @@ class ExpDobleService {
       'codProducto': 'P01',
       'codTipoCarga': 'T01',
       'codBuque': 'B01',
-      'estadoIn': 'P',
-      'estadoUp': 'C',
       'numTrans': int.tryParse(manager.atkId ?? '0') ?? 0,
       'taraExpoMin': 1000,
       'taraExpoMax': 5000,
@@ -491,8 +504,12 @@ class ExpDobleService {
 
     final allData = <String, dynamic>{};
 
+    // IMPORTANTE: numtrans NO es el vehicleAccessId. Se guarda aparte y, por
+    // compatibilidad, también en atkId. El id real del acceso vehicular vive
+    // en `ocrDiSvVehicleAccessId` y NO se modifica aquí.
     if (data['numtrans'] != null) {
       allData['atkId'] = data['numtrans'].toString();
+      allData['expMuelleNumtrans'] = data['numtrans'].toString();
     }
     if (data['estado'] != null) {
       allData['expMuelleEstado'] = data['estado'];

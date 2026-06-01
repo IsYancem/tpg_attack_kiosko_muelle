@@ -30,6 +30,7 @@ import 'package:provider/provider.dart';
 import 'package:tpg_attack_kiosko_muelle/models/datos/consultar_placa_model.dart';
 import 'package:tpg_attack_kiosko_muelle/models/datos/consultar_transaccion_model.dart';
 import 'package:tpg_attack_kiosko_muelle/models/datos/expo-repesaje.dart';
+import 'package:tpg_attack_kiosko_muelle/models/exp_muelle/exp_save_request.dart';
 import 'package:tpg_attack_kiosko_muelle/models/websockets/websocket_models.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/errors/error_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/muelle/descarga_screen.dart';
@@ -38,6 +39,8 @@ import 'package:tpg_attack_kiosko_muelle/screens/muelle/expRepesaje_screen.dart'
 import 'package:tpg_attack_kiosko_muelle/screens/muelle/psc_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/confirm_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/datosApi_service.dart';
+import 'package:tpg_attack_kiosko_muelle/services/apis/expDoble/exp_doble_service.dart';
+import 'package:tpg_attack_kiosko_muelle/services/apis/expDoble/exp_doble_transaction_runner.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/atk_transaction_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/logger/log_service.dart';
@@ -2000,4 +2003,86 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       // No lanzamos — no bloqueamos el flujo por fallo de extracción de DISV.
     }
   }
+
+  // Future<void> _procesarExpDoble(String placa) async {
+  //   final manager = _manager;
+  //   final appManager = _appManager;
+  //   if (manager == null || appManager == null) return;
+
+  //   final runner = ExpDobleTransactionRunner();
+
+  //   try {
+  //     await runner.run(
+  //       context: context,
+  //       appManager: appManager,
+  //       manager: manager,
+  //       onFinished: () async {
+  //         if (!mounted) return;
+
+  //         // Limpiar toda la transacción
+  //         manager.resetAll();
+
+  //         // Construir request final para NestJS
+  //         final service = ExpDobleService();
+  //         final req = _buildExpSaveRequest(manager, placa);
+
+  //         try {
+  //           final resp = await service.guardar(manager, appManager);
+  //           LogService.instance.logRequest('EXP_SAVE_OK', resp);
+  //         } catch (e, st) {
+  //           LogService.instance.logError('EXP_SAVE_EX', e, st);
+  //         }
+
+  //         // Volver a OCR
+  //         Navigator.pushAndRemoveUntil(
+  //           context,
+  //           PageRouteBuilder(
+  //             pageBuilder: (_, __, ___) => const OcrScannerScreen(),
+  //             transitionDuration: const Duration(milliseconds: 150),
+  //             transitionsBuilder: (_, animation, __, child) =>
+  //                 FadeTransition(opacity: animation, child: child),
+  //           ),
+  //           (route) => false,
+  //         );
+  //       },
+  //     );
+  //   } catch (e, st) {
+  //     await LogService.instance.logError('EXP_DOBLE_RUNNER_EX', e, st);
+  //   }
+  // }
+
+  // ExpSaveRequestDto _buildExpSaveRequest(
+  //   AtkTransactionManager manager,
+  //   String placa,
+  // ) {
+  //   return ExpSaveRequestDto(
+  //     placa: placa,
+  //     cedula: manager.driverCedula ?? '',
+  //     nombreConductor: manager.driverName,
+  //     vehicleAccessId: manager.get('ocrDiSvVehicleAccessIdEntrada') ?? 0,
+  //     tpg: int.tryParse(_appManager?.kioskConfig?.patio ?? '1') ?? 1,
+  //     garitaLetra: _appManager?.kioskConfig?.gateLetter,
+  //     garitaNumero: int.tryParse(_appManager?.kioskConfig?.gate ?? '1'),
+  //     doorNumber: 2,
+  //     fechaBarrera: _fechaBarrera(),
+  //     tipoMov: 'EXP',
+  //     contenedor: manager.contenedor1 ?? '',
+  //     contenedorDisv: manager.contenedorExp,
+  //     booking: manager.bookingExp,
+  //     tara: double.tryParse(manager.pesoTara ?? '0') ?? 0,
+  //     pesoIngreso: manager.pesoActualBascula,
+  //     pesoSalida: manager.pesoSalida,
+  //     sello1: manager.sello1Exp,
+  //     sello2: manager.sello2Exp,
+  //     sello3: manager.sello3Exp,
+  //     sello4: manager.sello4Exp,
+  //     tipoTran: 'I',
+  //     codProducto: 'P01',
+  //     codTipoCarga: 'T01',
+  //     codBuque: 'B01',
+  //     numTrans: int.tryParse(manager.atkId ?? '0'),
+  //     procesoCompleto: 'N',
+  //     estadoVal: 1,
+  //   );
+  // }
 }
