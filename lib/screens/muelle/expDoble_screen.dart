@@ -96,20 +96,43 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
       context: context,
       appManager: appState,
       manager: txn,
-      onFinished: () {
+      onFinished: () async {
         if (!mounted) return;
-        // Paso 13: limpiar la data restante y navegar al OCR.
-        txn.resetAll();
-        Navigator.pushAndRemoveUntil(
-          context,
+
+        // 1) Estado final estable (NO reseteamos todavía: resetear aquí
+        //    repinta esta pantalla con datos vacíos y causa el salto brusco).
+        txn.setMany({
+          'isLoading': true,
+          'mensajeInferior':
+              'Doble exportación completada.\nRegresando al escáner...',
+        });
+
+        // 2) Pequeña pausa para que la pantalla final se perciba, no un corte seco.
+        await Future.delayed(const Duration(milliseconds: 700));
+        if (!mounted) return;
+
+        // 3) Navegar con transición suave (fade largo y con curva).
+        await Navigator.of(context).pushAndRemoveUntil(
           PageRouteBuilder(
             pageBuilder: (_, __, ___) => const OcrScannerScreen(),
-            transitionDuration: const Duration(milliseconds: 150),
-            transitionsBuilder: (_, animation, __, child) =>
-                FadeTransition(opacity: animation, child: child),
+            transitionDuration: const Duration(milliseconds: 450),
+            reverseTransitionDuration: const Duration(milliseconds: 300),
+            transitionsBuilder: (_, animation, __, child) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeInOut,
+              );
+              return FadeTransition(opacity: curved, child: child);
+            },
           ),
           (route) => false,
         );
+
+        // 4) Reset DESPUÉS de navegar: la pantalla vieja ya no es visible,
+        //    así que el repintado por notifyListeners no se nota.
+        //    OcrScannerScreen.initState ya hace resetOcr/resetDriver, pero
+        //    dejamos el manager limpio para el siguiente ciclo.
+        txn.resetAll();
       },
     );
   }
@@ -137,8 +160,8 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
                   height: hHeader,
                   assetImagePath:
                       ExpIncomingVisibilityConfig.show['header.logo'] ?? true
-                          ? 'assets/images/tpg_logo.png'
-                          : null,
+                      ? 'assets/images/tpg_logo.png'
+                      : null,
                   initialCountdownSeconds: flowRemaining ?? 300,
                   onModeChanged: (isLight) =>
                       context.read<AppStateManager>().setLight(isLight),
@@ -182,8 +205,7 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
                       const Expanded(flex: 25, child: Columna1DriverExp()),
                     if ((ExpIncomingVisibilityConfig.show['col1.driver'] ??
                             true) &&
-                        ((ExpIncomingVisibilityConfig
-                                    .show['col2.importador'] ??
+                        ((ExpIncomingVisibilityConfig.show['col2.importador'] ??
                                 true) ||
                             (ExpIncomingVisibilityConfig.show['col3.mapa'] ??
                                 true)))

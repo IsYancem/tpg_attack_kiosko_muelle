@@ -140,7 +140,10 @@ class ExpDobleTransactionRunner {
               'procesado.\nLimpiando datos...',
         });
 
-        await Future.delayed(_esperaEntreContenedores);
+        if (!esUltimo) {
+          await Future.delayed(_esperaEntreContenedores);
+        }
+        
         if (!context.mounted) break;
 
         _limpiarDataTransaccion(manager);
