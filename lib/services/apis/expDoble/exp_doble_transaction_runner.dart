@@ -17,10 +17,11 @@
 // CONTENEDOR 1 (SALIDA): es el contenedor que NO se leyó en el OCR. Su confirm
 //   ya fue ejecutado por OcrScannerScreen (RAMA B), por lo que aquí se omite el
 //   confirm y se reutiliza la respuesta guardada (`expDobleConfirmSalidaResponse`).
+//   Su peso de báscula va en pesoSalida.
 //
 // CONTENEDOR 2 (ENTRADA): es el contenedor leído por el OCR. Aquí SÍ se ejecuta
 //   confirm-muelle/EXP con los datos del segundo contenedor y luego el resto del
-//   ciclo. Al terminar se limpia toda la data y se navega de regreso al OCR.
+//   ciclo. Su peso de báscula va en pesoIngreso.
 import 'package:flutter/material.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/errors/error_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/confirm_service.dart';
@@ -50,10 +51,19 @@ class _ContenedorJob {
     required this.confirmHecho,
     this.confirmResponse,
   });
+
+  // ?? FIX SALIDA: helper de rol. index 0 = SALIDA, index 1 = ENTRADA.
+  bool get esSalida => index == 0;
 }
 
 class ExpDobleTransactionRunner {
   ExpDobleTransactionRunner();
+
+  // ?? BYPASS TEMPORAL DE DEPURACIÓN:
+  //   Cuando es true, el runner SOLO procesa el primer contenedor (SALIDA)
+  //   y omite por completo el segundo (ENTRADA). Sirve para aislar los logs
+  //   del primer contenedor. PONER EN false para volver al flujo doble real.
+  static const bool _bypassSegundoContenedor = false;
 
   final ConfirmService _confirmSvc = ConfirmService();
   final ExpDobleService _expSvc = ExpDobleService();
@@ -61,10 +71,6 @@ class ExpDobleTransactionRunner {
   static const _esperaEntreContenedores = Duration(seconds: 3);
 
   /// Ejecuta el flujo doble completo.
-  ///
-  /// [onFinished] se invoca tras terminar el SEGUNDO contenedor con éxito
-  /// (úsalo para navegar de regreso al OCR). Si todo falla, el runner navega
-  /// a la pantalla de error por su cuenta.
   Future<void> run({
     required BuildContext context,
     required AppStateManager appManager,
@@ -81,6 +87,7 @@ class ExpDobleTransactionRunner {
       'placa': placa,
       'driverCedula': manager.driverCedula,
       'totalContenedores': jobs.length,
+      'bypassSegundo': _bypassSegundoContenedor, // ?? BYPASS
       'jobs': jobs
           .map(
             (j) => {
@@ -89,6 +96,7 @@ class ExpDobleTransactionRunner {
               'contenedor': j.contenedor,
               'vehicleAccessId': j.vehicleAccessId,
               'confirmHecho': j.confirmHecho,
+              'esSalida': j.esSalida,
             },
           )
           .toList(),
@@ -173,9 +181,9 @@ class ExpDobleTransactionRunner {
       await LogService.instance.logRequest('EXP_DOBLE_RUNNER_DONE', {
         'elapsedMs': sw.elapsedMilliseconds,
         'totalContenedores': jobs.length,
+        'bypassSegundo': _bypassSegundoContenedor, // ?? BYPASS
       });
 
-      // Paso 13 — navegar de regreso al OCR.
       if (context.mounted) {
         if (onFinished != null) {
           onFinished();
@@ -211,9 +219,9 @@ class ExpDobleTransactionRunner {
     }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Procesa UN contenedor: confirm? → inicializar → validar → guardar → terminar
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // Procesa UN contenedor: confirm? ? inicializar ? validar ? guardar ? terminar
+  // ---------------------------------------------------------------------------
   Future<void> _procesarContenedor({
     required BuildContext context,
     required AppStateManager appManager,
@@ -231,6 +239,9 @@ class ExpDobleTransactionRunner {
       'expDobleContenedorActivo': job.contenedor,
       'expDobleContenedorIndexActivo': job.index,
       'expDobleVacIdActivo': job.vehicleAccessId,
+      // ?? FIX SALIDA: marcar rol del contenedor activo para que el service
+      //   decida en qué campo va el peso de báscula (pesoSalida vs pesoIngreso).
+      'expDobleEsSalida': job.esSalida,
       if (job.vehicleAccessId > 0) 'atkId': job.vehicleAccessId.toString(),
       if (job.vehicleAccessId > 0)
         'ocrDiSvVehicleAccessId': job.vehicleAccessId.toString(),
@@ -238,7 +249,7 @@ class ExpDobleTransactionRunner {
           '${job.etiqueta}: ${job.contenedor}\nIniciando transacción...',
     });
 
-    // ── PASO 1: CONFIRM (solo si no se hizo antes)
+    // -- PASO 1: CONFIRM (solo si no se hizo antes)
     if (!job.confirmHecho) {
       manager.setMany({
         'isLoading': true,
@@ -274,6 +285,7 @@ class ExpDobleTransactionRunner {
       'contenedor1': job.contenedor,
       'contenedorExp': job.contenedor,
       'expDobleVacIdActivo': job.vehicleAccessId,
+      'expDobleEsSalida': job.esSalida, // ?? FIX SALIDA
       if (job.vehicleAccessId > 0) 'atkId': job.vehicleAccessId.toString(),
       if (job.vehicleAccessId > 0)
         'ocrDiSvVehicleAccessId': job.vehicleAccessId.toString(),
@@ -281,7 +293,7 @@ class ExpDobleTransactionRunner {
       'muelleTransactionCode': 'EXP',
     });
 
-    // ── PASO 2: INICIALIZAR
+    // -- PASO 2: INICIALIZAR
     manager.setMany({
       'isLoading': true,
       'mensajeInferior': '${job.etiqueta}: ${job.contenedor}\nInicializando...',
@@ -289,7 +301,7 @@ class ExpDobleTransactionRunner {
     await _expSvc.inicializar(manager, appManager);
     _abortarSiError(manager, 'inicializar', job);
 
-    // ── PASO 3: VALIDAR CONTENEDOR
+    // -- PASO 3: VALIDAR CONTENEDOR
     manager.setMany({
       'isLoading': true,
       'mensajeInferior':
@@ -298,20 +310,23 @@ class ExpDobleTransactionRunner {
     await _expSvc.validarContenedor(manager, appManager);
     _abortarSiError(manager, 'validar-contenedor', job);
 
-    // ── PASO 4: GUARDAR
+    // -- PASO 4: GUARDAR
+    // ?? FIX SALIDA: dejar el peso de báscula en la clave correcta según rol.
+    //   SALIDA (index 0)  -> pesoSalida = báscula, pesoIngreso = null
+    //   ENTRADA (index 1) -> pesoIngreso = báscula, pesoSalida = null
     manager.setMany({
       'isLoading': true,
       'mensajeInferior': '${job.etiqueta}: ${job.contenedor}\nGuardando...',
-      // Asignar pesos según tipo de contenedor
-      'pesoIngreso': job.index == 0
-          ? manager.pesoIngreso
-          : manager.pesoActualBascula,
-      'pesoSalida': job.index == 1 ? manager.pesoActualBascula : null,
+
+      // SALIDA: pesoSalida tiene báscula, pesoIngreso va en 0
+      // ENTRADA: pesoIngreso tiene báscula, pesoSalida va en 0
+      'pesoIngreso': job.esSalida ? 0.0 : manager.pesoActualBascula,
+      'pesoSalida': job.esSalida ? manager.pesoActualBascula : 0.0,
     });
     await _expSvc.guardar(manager, appManager);
     _abortarSiError(manager, 'guardar', job);
 
-    // ── PASO 5: TERMINAR
+    // -- PASO 5: TERMINAR
     manager.setMany({
       'isLoading': true,
       'mensajeInferior': '${job.etiqueta}: ${job.contenedor}\nTerminando...',
@@ -323,6 +338,7 @@ class ExpDobleTransactionRunner {
       'index': job.index,
       'etiqueta': job.etiqueta,
       'contenedor': job.contenedor,
+      'esSalida': job.esSalida,
       'atkId': manager.atkId,
     });
   }
@@ -340,9 +356,9 @@ class ExpDobleTransactionRunner {
     }
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
   // Construye los jobs (SALIDA primero, ENTRADA después) desde el manager.
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
   List<_ContenedorJob> _construirJobs(AtkTransactionManager manager) {
     final jobs = <_ContenedorJob>[];
 
@@ -364,8 +380,6 @@ class ExpDobleTransactionRunner {
         (manager.get('expDobleMovEntrada') as Map<String, dynamic>?) ??
         <String, dynamic>{};
 
-    // vehicleAccessId = id REAL del acceso vehicular. Prioridad:
-    //   1) clave explícita expDobleVacId*  2) id dentro del movimiento  3) atkId
     final vacIdSalida =
         _int(manager.get('expDobleVacIdSalida')) ??
         _extractVacId(movSalida) ??
@@ -389,11 +403,22 @@ class ExpDobleTransactionRunner {
           contenedor: contSalida,
           vehicleAccessId: vacIdSalida,
           movement: movSalida,
-          // Si OCR ya confirmó la salida, no repetimos el confirm.
           confirmHecho: confirmSalidaOk && confirmSalidaResp != null,
           confirmResponse: confirmSalidaResp,
         ),
       );
+    }
+
+    // ?? BYPASS TEMPORAL: cuando _bypassSegundoContenedor es true NO se agrega
+    //   el job de ENTRADA, así el runner procesa solo la SALIDA.
+    if (_bypassSegundoContenedor) {
+      LogService.instance.logWarning('EXP_DOBLE_BYPASS_SEGUNDO_CONTENEDOR', {
+        'motivo':
+            'Bypass de depuración activo: solo se procesa el contenedor SALIDA.',
+        'contEntradaOmitido': contEntrada,
+        'vacIdEntradaOmitido': vacIdEntrada,
+      });
+      return jobs;
     }
 
     if (contEntrada.isNotEmpty && contEntrada != contSalida) {
@@ -404,7 +429,7 @@ class ExpDobleTransactionRunner {
           contenedor: contEntrada,
           vehicleAccessId: vacIdEntrada,
           movement: movEntrada,
-          confirmHecho: false, // el segundo SIEMPRE arranca desde confirm.
+          confirmHecho: false,
         ),
       );
     }
@@ -412,16 +437,13 @@ class ExpDobleTransactionRunner {
     return jobs;
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Limpia la data de UNA transacción dejando intactos: conductor, vehículo,
-  // contenedores OCR y las claves de coordinación del flujo doble.
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // Limpia la data de UNA transacción.
+  // ---------------------------------------------------------------------------
   void _limpiarDataTransaccion(AtkTransactionManager manager) {
-    // Categorías propias de la transacción EXP en curso.
     manager.reset('exportador');
     manager.reset('expMuelleRepesaje');
 
-    // Claves sueltas específicas de la transacción.
     const transientes = <String>[
       'atkId',
       'contenedorExp',
@@ -443,6 +465,8 @@ class ExpDobleTransactionRunner {
       'expMuelleValidarContenedorOk',
       'expMuelleContenedorValidado',
       'errorMessage',
+      // ?? FIX SALIDA: limpiar el flag de rol entre contenedores.
+      'expDobleEsSalida',
     ];
     for (final k in transientes) {
       manager.set(k, null);
@@ -451,11 +475,9 @@ class ExpDobleTransactionRunner {
     manager.set('hasError', false);
   }
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Extrae el DISV de la respuesta de confirm (atkPaConsDisvExp1) y lo escribe
-  // en el manager. Equivalente al helper de OcrScannerScreen, pero local al
-  // runner para que cada contenedor pueble su propio DISV.
-  // ───────────────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // Extrae el DISV de la respuesta de confirm (atkPaConsDisvExp1).
+  // ---------------------------------------------------------------------------
   void _aplicarDisvDesdeConfirm(
     Map<String, dynamic> raw,
     AtkTransactionManager manager,
@@ -554,8 +576,6 @@ class ExpDobleTransactionRunner {
     return int.tryParse(v.toString().trim());
   }
 
-  /// Extrae el id del acceso vehicular desde el JSON del movimiento.
-  /// Mismo orden de búsqueda que OcrScannerScreen._extractVacIdFromMovement.
   int? _extractVacId(Map<String, dynamic> m) {
     if (m.isEmpty) return null;
     final raw =

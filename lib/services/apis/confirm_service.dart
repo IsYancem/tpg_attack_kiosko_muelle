@@ -28,12 +28,12 @@ class ConfirmServiceException implements Exception {
 class ConfirmService {
   final _log = LogService.instance;
 
-  // ✅ Cache de headers (compartido a nivel de clase)
+  // ? Cache de headers (compartido a nivel de clase)
   static Map<String, String>? _cachedHeaders;
   static DateTime? _headersCacheTime;
   static const _headersCacheDuration = Duration(minutes: 4);
 
-  /// ✅ Headers con cache
+  /// ? Headers con cache
   Future<Map<String, String>> _authHeaders() async {
     // Usar cache si está válido
     if (_cachedHeaders != null &&
@@ -70,13 +70,13 @@ class ConfirmService {
     return headers;
   }
 
-  /// ✅ Invalidar cache
+  /// ? Invalidar cache
   static void invalidateHeadersCache() {
     _cachedHeaders = null;
     _headersCacheTime = null;
   }
 
-  /// ✅ POST con auto-refresh optimizado
+  /// ? POST con auto-refresh optimizado
   Future<http.Response> _postWithAutoRefresh(
     Uri uri, {
     required String body,
@@ -105,7 +105,7 @@ class ConfirmService {
     return res;
   }
 
-  /// ✅ Ejecutar transacción Confirm OPTIMIZADO con LOGS DETALLADOS
+  /// ? Ejecutar transacción Confirm OPTIMIZADO con LOGS DETALLADOS
   Future<Map<String, dynamic>> ejecutarConfirm(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -126,9 +126,9 @@ class ConfirmService {
         : (WindowsUserService.instance.getUserInfo()['username'] ?? 'Unknown');
 
     try {
-      // ═══════════════════════════════════════════════════════════════
+      // ---------------------------------------------------------------
       // PASO 1: Preparar body
-      // ═══════════════════════════════════════════════════════════════
+      // ---------------------------------------------------------------
       final body = {
         "placa": manager.vehiculoPlaca ?? "",
         "choferIdentificacion": manager.driverCedula ?? "",
@@ -160,9 +160,9 @@ class ConfirmService {
         'rawBody': utf8.decode(resp.bodyBytes),
       });
 
-      // ═══════════════════════════════════════════════════════════════
+      // ---------------------------------------------------------------
       // PASO 3: Validar y parsear respuesta
-      // ═══════════════════════════════════════════════════════════════
+      // ---------------------------------------------------------------
       if (resp.statusCode != 200 && resp.statusCode != 201) {
         final msg = 'HTTP ${resp.statusCode}';
         manager.setError(msg);
@@ -177,13 +177,13 @@ class ConfirmService {
         'decoded': decoded,
       });
 
-      // ═══════════════════════════════════════════════════════════════
-      // PASO 4: Aplicar respuesta
-      // ═══════════════════════════════════════════════════════════════
+      // ---------------------------------------------------------------
+      // PASO 4: Aplicar respuesta (flujo de COLA, sí usa _handleResponse)
+      // ---------------------------------------------------------------
       final model = ConfirmResponseModel.fromJson(decoded);
       _handleResponse(model, manager);
 
-      // ✅ Log resumido final (fire-and-forget)
+      // ? Log resumido final (fire-and-forget)
       _log.logRequest('CONFIRM_COMPLETE', {
         'latency_ms': sw.elapsedMilliseconds,
         'errorCode': model.errorCode,
@@ -194,7 +194,7 @@ class ConfirmService {
     } catch (e, st) {
       _log.logError('CONFIRM_SERVICE_EX', e, st);
       manager.setError('Error ejecutando servicio Confirm: $e');
-      print('❌ [CONFIRM_SERVICE] ERROR: $e');
+      print('? [CONFIRM_SERVICE] ERROR: $e');
       rethrow;
     }
   }
@@ -232,9 +232,7 @@ class ConfirmService {
       );
 
       final numTran = _toInt(
-        manager.get('numTran') ??
-            _mapValue(movementActive, 'movid') ??
-            _mapValue(ocrMovementActive, 'movid'),
+        manager.get('numTran')
       );
 
       final doorNumber = _toInt(
@@ -245,8 +243,11 @@ class ConfirmService {
 
       final bascula = _toInt(appManager.kioskConfig?.gate);
 
+      // ?? FIX: placa resiliente. Antes el confirm anterior dejaba
+      // vehiculoPlaca = '' (por _handleResponse) y el segundo confirm
+      // mandaba "placa":"". Ahora se resuelve con fallback.
       final body = {
-        "placa": manager.vehiculoPlaca ?? "",
+        "placa": _resolvePlaca(manager),
         "choferIdentificacion": manager.driverCedula ?? "",
         "atk_id": atkId,
         "numTran": numTran,
@@ -304,7 +305,13 @@ class ConfirmService {
       });
 
       final model = ConfirmResponseModel.fromJson(decoded);
-      _handleResponse(model, manager);
+
+      // ?? FIX CRÍTICO: confirm-muelle NO trae getCola. Antes _handleResponse
+      // leía un getCola vacío y sobrescribía placa/atkId/contenedor/sellos/
+      // tipoCarga con strings vacíos, y caía en _handleDspTrlTransaction.
+      // Aquí solo validamos errores. El DISV se extrae aparte
+      // (OcrScannerScreen._applyDiSvFromConfirmRaw / runner._aplicarDisvDesdeConfirm).
+      _handleMuelleErrorsOnly(model, manager);
 
       _log.logRequest('CONFIRM_MUELLE_COMPLETE', {
         'latency_ms': sw.elapsedMilliseconds,
@@ -325,6 +332,88 @@ class ConfirmService {
     }
   }
 
+  // ?? NUEVO: resuelve la placa con varios fallbacks (incluye movement_active).
+  String _resolvePlaca(AtkTransactionManager manager) {
+    final candidates = <dynamic>[
+      manager.vehiculoPlaca,
+      manager.get('placa'),
+      manager.get('rfidPlaca'),
+      manager.conseguirConductorPlaca,
+      _mapValue(manager.get('movement_active'), 'placa'),
+    ];
+    for (final c in candidates) {
+      final s = (c ?? '').toString().trim().toUpperCase();
+      if (s.isNotEmpty) return s;
+    }
+    return '';
+  }
+
+  // ?? NUEVO: solo valida errores de confirm-muelle, sin tocar datos.
+  void _handleMuelleErrorsOnly(
+    ConfirmResponseModel model,
+    AtkTransactionManager manager,
+  ) {
+    // 1) Error global
+    if (model.errorCode != 0) {
+      String? detalle;
+      for (final entry in model.services.entries) {
+        final sp = entry.value;
+        if (sp.errorCode == 1) {
+          if (sp.spMessage != null && sp.spMessage!.isNotEmpty) {
+            detalle = sp.spMessage;
+          } else if (sp.message.isNotEmpty) {
+            detalle = sp.message;
+          } else if (sp.data != null) {
+            final dataMap = _tryConvertToMap(sp.data);
+            if (dataMap != null) {
+              detalle =
+                  dataMap['des_error'] ??
+                  dataMap['msg_error'] ??
+                  dataMap['message'];
+            }
+          }
+          break;
+        }
+      }
+
+      final msg = detalle?.isNotEmpty == true
+          ? 'Error: $detalle'
+          : (model.message.isNotEmpty
+                ? model.message
+                : 'Error global en Confirm Muelle');
+
+      manager.setMany({
+        'hasError': true,
+        'errorMessage': msg,
+        'mensajeInferior': msg,
+        'tituloPantalla': 'Error en Confirmación',
+      });
+      return;
+    }
+
+    // 2) SP específico fallido (errorCode == 1)
+    StepEnvelope? spFallido;
+    model.services.forEach((k, v) {
+      if (v.errorCode == 1 && spFallido == null) {
+        spFallido = v;
+      }
+    });
+
+    if (spFallido != null) {
+      final msg = spFallido!.spMessage ?? spFallido!.message;
+      manager.setMany({
+        'hasError': true,
+        'errorMessage': msg,
+        'mensajeInferior': msg,
+        'tituloPantalla': 'Error en Confirmación',
+      });
+      return;
+    }
+
+    // 3) OK: no se sobrescribe nada (placa, atkId, contenedor, DISV).
+    manager.clearError();
+  }
+
   int? _toInt(dynamic value) {
     if (value == null) return null;
     if (value is int) return value;
@@ -342,9 +431,9 @@ class ConfirmService {
     ConfirmResponseModel model,
     AtkTransactionManager manager,
   ) {
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     // 1) Verificar error global
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     if (model.errorCode != 0) {
       String? mensajeDetallado;
 
@@ -352,15 +441,15 @@ class ConfirmService {
         for (final entry in model.services.entries) {
           final sp = entry.value;
           if (sp.errorCode == 1) {
-            // 🔥 PRIORIDAD 1: spMessage del SP
+            // ?? PRIORIDAD 1: spMessage del SP
             if (sp.spMessage != null && sp.spMessage!.isNotEmpty) {
               mensajeDetallado = sp.spMessage;
             }
-            // 🔥 PRIORIDAD 2: message del envelope
+            // ?? PRIORIDAD 2: message del envelope
             else if (sp.message.isNotEmpty) {
               mensajeDetallado = sp.message;
             }
-            // 🔥 PRIORIDAD 3: data del SP si contiene mensaje
+            // ?? PRIORIDAD 3: data del SP si contiene mensaje
             else if (sp.data != null) {
               // Intentar extraer mensaje del data
               final dataMap = _tryConvertToMap(sp.data);
@@ -391,9 +480,9 @@ class ConfirmService {
       return;
     }
 
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     // 2) SP específico fallido
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     StepEnvelope? spFallido;
 
     model.services.forEach((k, v) {
@@ -414,9 +503,9 @@ class ConfirmService {
       return;
     }
 
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     // 3) Extraer datos de la cola (FIX: desde services)
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     final getCola = model.services['getCola'];
     final cola = getCola?.dataAsMap ?? {};
 
@@ -424,7 +513,7 @@ class ConfirmService {
     final atkId = (cola['atk_id'] ?? model.numero ?? '').toString().trim();
     final placa = (cola['placa'] ?? '').toString().trim();
 
-    // ✅ (opcional) título humano desde catalogoTitulo
+    // ? (opcional) título humano desde catalogoTitulo
     final catalogo = model.services['catalogoTitulo']?.dataAsMap ?? {};
     final tituloHumano = (catalogo['title'] ?? '').toString().trim();
 
@@ -437,12 +526,9 @@ class ConfirmService {
       'errorMessage': null,
     };
 
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     // 4) Manejar según tipo de transacción
-    // ───────────────────────────────────────────────
-    // ───────────────────────────────────────────────
-    // 4) Manejar según tipo de transacción
-    // ───────────────────────────────────────────────
+    // -----------------------------------------------
     if (tipoMov == 'EXP') {
       _handleExpTransaction(model, manager, baseData, cola);
     } else if (tipoMov == 'RES') {
@@ -464,16 +550,13 @@ class ConfirmService {
 
     final permisos = servicios['atkPaConsPermisosVaciosEx']?.dataAsMap ?? {};
     final pendientes = servicios['consultaTransPendientes']?.dataAsMap ?? {};
-    // final decision = servicios['decisionExm']?.dataAsMap ?? {};
     final decisionMsg = (servicios['decisionExm']?.message ?? '')
         .toString()
         .trim();
 
-    // Datos clave
     final ruc = (cola['cedula'] ?? '').toString().trim();
     final cont = (cola['contenedor1'] ?? '').toString().trim();
 
-    // Pendiente #1 (en tu ejemplo siempre viene)
     final countPen = pendientes['countPen'];
     final numTran1 = pendientes['numTranPen1'];
     final tara1 = pendientes['taraPen1'];
@@ -492,23 +575,15 @@ class ConfirmService {
 
     manager.setMany({
       ...baseData,
-
-      // Básicos del chofer/vehículo
       'driverCedula': ruc,
       'vehiculoPlaca': (cola['placa'] ?? '').toString().trim(),
       'contenedor1': cont,
       'contenedor2': (cola['contenedor2'] ?? '').toString().trim(),
-
-      // Campos DISV/Permisos (sí vienen en EXM)
       'aniodisv': permisos['aniodisv'],
       'numdisv': permisos['numdisv'],
-      'idTraslados':
-          permisos['id_maestro'], // o si prefieres: permisos['id_carro']
-      // Peso que realmente te interesa en UI
+      'idTraslados': permisos['id_maestro'],
       'pesoIngreso': pesoIng1?.toString(),
       'pesoTara': tara1?.toString(),
-
-      // Mensaje UI
       'mensajeInferior': msgInferior,
     });
   }
@@ -519,33 +594,23 @@ class ConfirmService {
     Map<String, dynamic> baseData,
     Map<String, dynamic> cola,
   ) {
-    // services.atkInOut.data: { entrada: "I", salida: null }
     final inOut = model.services['atkInOut']?.dataAsMap ?? {};
     final entrada = (inOut['entrada'] ?? '').toString().trim();
     final salida = (inOut['salida'] ?? '').toString().trim();
 
-    // services.registroEntrada.data: { tieneEntrada: true, tieneSalida: false }
     final reg = model.services['registroEntrada']?.dataAsMap ?? {};
     final tieneEntrada = reg['tieneEntrada'] == true;
     final tieneSalida = reg['tieneSalida'] == true;
 
-    // services.atkBypassHuella.data: { cod_error: 1 ... } (en tu ejemplo: requiere huella)
     final bypass = model.services['atkBypassHuella']?.dataAsMap ?? {};
-    final bypassCod =
-        bypass['cod_error']; // 0 = bypass, 1 = requiere huella (según tu backend)
+    final bypassCod = bypass['cod_error'];
 
     manager.setMany({
       ...baseData,
-
-      // Datos principales que SI vienen en tu respuesta RES
       'driverCedula': (cola['cedula'] ?? '').toString().trim(),
-      'vehiculoTipoCarga': (cola['carga_suelta'] ?? '')
-          .toString()
-          .trim(), // "N"
+      'vehiculoTipoCarga': (cola['carga_suelta'] ?? '').toString().trim(),
       'contenedor1': (cola['contenedor1'] ?? '').toString().trim(),
       'contenedor2': (cola['contenedor2'] ?? '').toString().trim(),
-
-      // Mensaje útil para tu UI (columna 2 / mensaje inferior)
       'mensajeInferior': [
         'RES confirmado (#${baseData['atkId']})',
         if (entrada.isNotEmpty) 'Entrada=$entrada',
@@ -557,7 +622,6 @@ class ConfirmService {
     });
   }
 
-  // Método auxiliar para convertir data a Map
   Map<String, dynamic>? _tryConvertToMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
     if (data is Map) return Map<String, dynamic>.from(data);
@@ -570,7 +634,6 @@ class ConfirmService {
     Map<String, dynamic> baseData,
     Map<String, dynamic> cola,
   ) {
-    // Obtener datos de atkPaConsDisvExp1
     final disv = model['atkPaConsDisvExp1'];
     final disvList = disv?.dataAsList;
     Map<String, dynamic> disvData = {};
@@ -578,11 +641,9 @@ class ConfirmService {
       disvData = disvList[0] as Map<String, dynamic>? ?? {};
     }
 
-    // ✅ Obtener ID de traslado (prioridad: vacíos → conducto)
     final vacios = model['atkConsDetTras_vacios']?.dataAsMap ?? {};
     final conducto = model['atkConsDetTras_conducto']?.dataAsMap ?? {};
 
-    // Lógica: el primero distinto de 0 entre los 4 posibles IDs
     final idTraslados = [
       vacios['id_traslados'],
       vacios['id_porteo'],
@@ -594,14 +655,10 @@ class ConfirmService {
       conducto['id_despacho'],
     ].firstWhere((v) => (v is num && v != 0), orElse: () => 0);
 
-    // Construir el mapa final con nuevos campos
     final dataToSet = {
       ...baseData,
-      // Datos de la cola
       'driverCedula': cola['cedula'],
       'contenedor1': cola['contenedor1'],
-
-      // Datos de DISV (exportación)
       'clienteExp': disvData['nombre'],
       'productoExp': disvData['producto'],
       'vehiculoTipoCarga': disvData['tipocarga'],
@@ -616,20 +673,16 @@ class ConfirmService {
       'vehiculoRefrigerado': disvData['refrigerado'],
       'vehiculoCargaImo': disvData['carga_imo'],
       'vehiculoObservaciones': disvData['observaciones'],
-
-      // ✅ Nuevos campos relevantes
       'aniodisv': disvData['aniodisv'],
       'numdisv': disvData['numdisv'],
       'idTraslados': idTraslados,
-
       'mensajeInferior': 'Transacción EXP completada (#${baseData['atkId']})',
     };
 
-    // Guardar finalmente
     manager.setMany(dataToSet);
   }
 
-  /// ✅ Manejo para DSP, TRL, DSP-CS (código existente)
+  /// ? Manejo para DSP, TRL, DSP-CS (código existente)
   void _handleDspTrlTransaction(
     ConfirmResponseModel model,
     AtkTransactionManager manager,

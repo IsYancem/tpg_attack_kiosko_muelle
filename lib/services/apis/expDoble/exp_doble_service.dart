@@ -2,12 +2,6 @@
 // Autor: Abraham Yance
 // Descripción: Servicio para los endpoints del controller `exp-muelle-destare`
 //   (inicializar, validar-contenedor, guardar, terminar, ruta).
-//
-// ⚠️ CAMBIO IMPORTANTE:
-//   Todos los endpoints ahora apuntan a `kiosk/api/exp-muelle-destare/*`
-//   (antes apuntaban a `kiosk/api/exp/*`, que NO existe en el backend).
-//   El controller NestJS es @Controller('exp-muelle-destare') bajo el
-//   prefijo global `kiosk/api`.
 import 'dart:async';
 import 'dart:convert';
 
@@ -30,7 +24,6 @@ class ExpDobleServiceException implements Exception {
 class ExpDobleService {
   final _log = LogService.instance;
 
-  // ✅ Cache de headers
   static Map<String, String>? _cachedHeaders;
   static DateTime? _headersCacheTime;
   static const _headersCacheDuration = Duration(minutes: 4);
@@ -75,7 +68,6 @@ class ExpDobleService {
     _headersCacheTime = null;
   }
 
-  /// ✅ POST con auto-refresh
   Future<http.Response> _postWithAutoRefresh(
     Uri uri, {
     required String body,
@@ -126,12 +118,11 @@ class ExpDobleService {
     return url;
   }
 
-  /// Prefijo de todos los endpoints del controller exp-muelle-destare.
   String get _root => '${_baseUrl}kiosk/api/exp-muelle-destare';
 
-  // ═══════════════════════════════════════════════════════════════
-  // INICIALIZAR  →  POST kiosk/api/exp-muelle-destare/inicializar
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
+  // INICIALIZAR
+  // ---------------------------------------------------------------
   Future<Map<String, dynamic>> inicializar(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -166,9 +157,9 @@ class ExpDobleService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // VALIDAR CONTENEDOR  →  POST kiosk/api/exp-muelle-destare/validar-contenedor
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
+  // VALIDAR CONTENEDOR
+  // ---------------------------------------------------------------
   Future<Map<String, dynamic>> validarContenedor(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -204,9 +195,9 @@ class ExpDobleService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // GUARDAR  →  POST kiosk/api/exp-muelle-destare/guardar
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
+  // GUARDAR
+  // ---------------------------------------------------------------
   Future<Map<String, dynamic>> guardar(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -243,9 +234,9 @@ class ExpDobleService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // TERMINAR  →  POST kiosk/api/exp-muelle-destare/terminar
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
+  // TERMINAR
+  // ---------------------------------------------------------------
   Future<Map<String, dynamic>> terminar(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -281,9 +272,9 @@ class ExpDobleService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // RUTA  →  POST kiosk/api/exp-muelle-destare/ruta
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
+  // RUTA
+  // ---------------------------------------------------------------
   Future<Map<String, dynamic>> ruta(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -316,31 +307,128 @@ class ExpDobleService {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
   // BUILD REQUESTS
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
 
-  /// Contenedor "activo" de la transacción en curso. El runner deja
-  /// `contenedor1` apuntando al contenedor que se está procesando.
   String _contenedorActivo(AtkTransactionManager manager) {
     return (manager.contenedor1 ?? manager.contenedorExp ?? '')
         .trim()
         .toUpperCase();
   }
 
-  /// ⚠️ ID REAL del acceso vehicular (el `id` del movimiento DISV, ej. 48006837).
-  ///
-  /// NUNCA se debe usar `manager.atkId` para esto: `inicializar` sobreescribe
-  /// `atkId` con el `numtrans` del SP, así que después de inicializar `atkId`
-  /// ya NO es el vehicleAccessId. El runner deja el id real en
-  /// `ocrDiSvVehicleAccessId` (y en `expDobleVacIdActivo`) por contenedor.
+  /// ?? ID REAL del acceso vehicular (ej. 48006837). NUNCA usar atkId.
   int _vehicleAccessId(AtkTransactionManager manager) {
     final raw =
         (manager.get('ocrDiSvVehicleAccessId')?.toString().trim().isNotEmpty ??
-                false)
-            ? manager.get('ocrDiSvVehicleAccessId').toString().trim()
-            : (manager.get('expDobleVacIdActivo')?.toString().trim() ?? '0');
+            false)
+        ? manager.get('ocrDiSvVehicleAccessId').toString().trim()
+        : (manager.get('expDobleVacIdActivo')?.toString().trim() ?? '0');
     return int.tryParse(raw) ?? 0;
+  }
+
+  // ?? FIX SALIDA: true si el contenedor activo es SALIDA (el que NO leyó el OCR).
+  bool _esSalida(AtkTransactionManager manager) {
+    return (manager.get('expDobleEsSalida') as bool?) ?? false;
+  }
+
+  // ?? FIX 400: el backend valida pesoIngreso/pesoSalida como número >= 0 y NO
+  //   acepta null. Por eso el campo que no aplica se envía como 0 (no null).
+  //   SALIDA  -> pesoSalida  = báscula, pesoIngreso = 0
+  //   ENTRADA -> pesoIngreso = báscula, pesoSalida  = 0
+  double _toDoubleOrZero(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+
+    final text = value.toString().trim().replaceAll(',', '.');
+    if (text.isEmpty) return 0.0;
+
+    return double.tryParse(text) ?? 0.0;
+  }
+
+  /// Para SALIDA:
+  ///   pesoIngreso = peso histórico de ingreso recuperado por placa/conductor
+  ///   pesoSalida  = peso actual de báscula
+  ///
+  /// Para ENTRADA:
+  ///   pesoIngreso = peso actual de báscula
+  ///   pesoSalida  = 0
+  double _pesoIngresoParaEnviar(AtkTransactionManager manager) {
+    if (_esSalida(manager)) {
+      final pesoIngresoHistorico = _toDoubleOrZero(
+        manager.conseguirConductorPesoIng,
+      );
+
+      return pesoIngresoHistorico;
+    }
+
+    return manager.pesoActualBascula;
+  }
+
+  double _pesoSalidaParaEnviar(AtkTransactionManager manager) {
+    if (_esSalida(manager)) {
+      return manager.pesoActualBascula;
+    }
+
+    return 0.0;
+  }
+
+  int? _parseIntFlexible(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString().trim();
+    if (s.isEmpty) return null;
+
+    final asInt = int.tryParse(s);
+    if (asInt != null) return asInt;
+
+    final asDouble = double.tryParse(s.replaceAll(',', '.'));
+    if (asDouble != null) return asDouble.toInt();
+
+    return null;
+  }
+
+  int _numTran(AtkTransactionManager manager) {
+    // SALIDA -> numTran del conductor (conseguir-conductor).
+    if (_esSalida(manager)) {
+      final numTranConductor = _parseIntFlexible(
+        manager.conseguirConductorNumTran,
+      );
+      if (numTranConductor != null && numTranConductor > 0) {
+        _log.logRequest('EXP_NUMTRAN_FROM_CONDUCTOR_SALIDA', {
+          'numTran': numTranConductor,
+          'esSalida': true,
+        });
+        return numTranConductor;
+      }
+      // Fallback de SALIDA (si el conductor no trajo numTran).
+      final mov = manager.get('movement_active');
+      final candidates = <dynamic>[
+        manager.get('expDobleNumTranActivo'),
+        manager.get('numTran'),
+        _mapValue(mov, 'movid'),
+        _mapValue(_mapValue(mov, 'raw'), 'movid'),
+        manager.expMuelleNumtrans,
+      ];
+      for (final c in candidates) {
+        final v = _parseIntFlexible(c);
+        if (v != null && v > 0) return v;
+      }
+      return 0;
+    }
+
+    // ?? INGRESO (ENTRADA): el movid NO aplica. Siempre 0.
+    _log.logRequest('EXP_NUMTRAN_INGRESO_ZERO', {
+      'esSalida': false,
+      'numTran': 0,
+    });
+    return 0;
+  }
+
+  dynamic _mapValue(dynamic source, String key) {
+    if (source is Map<String, dynamic>) return source[key];
+    if (source is Map) return source[key];
+    return null;
   }
 
   Map<String, dynamic> _buildInicializarRequest(
@@ -374,8 +462,6 @@ class ExpDobleService {
     };
   }
 
-  /// El endpoint validar-contenedor solo necesita:
-  ///   { contenedor, placa, cedula, vehicleAccessId }
   Map<String, dynamic> _buildValidarContenedorRequest(
     AtkTransactionManager manager,
     AppStateManager appManager,
@@ -392,6 +478,8 @@ class ExpDobleService {
     AtkTransactionManager manager,
     AppStateManager appManager,
   ) {
+    final esSalida = _esSalida(manager);
+
     return {
       'placa': _safePlaca(manager),
       'cedula': manager.driverCedula ?? '',
@@ -407,22 +495,23 @@ class ExpDobleService {
       'contenedorDisv': manager.contenedorExp,
       'booking': manager.bookingExp,
       'tara': double.tryParse(manager.pesoTara ?? '0') ?? 0,
-      'pesoIngreso': manager.pesoActualBascula,
-      'pesoSalida': null,
+      // ?? FIX 400: 0 en vez de null en el campo que no aplica.
+      'pesoIngreso': _pesoIngresoParaEnviar(manager),
+      'pesoSalida': _pesoSalidaParaEnviar(manager),
       'sello1': manager.sello1Exp ?? manager.sello1,
       'sello2': manager.sello2Exp ?? manager.sello2,
       'sello3': manager.sello3Exp ?? manager.sello3,
       'sello4': manager.sello4Exp ?? manager.sello4,
       'sello5': manager.sello5,
-      'tipoTran': 'I',
+      'tipoTran': esSalida ? 'O' : 'I',
       'codProducto': 'P01',
       'codTipoCarga': 'T01',
       'codBuque': 'B01',
-      'numTrans': int.tryParse(manager.atkId ?? '0') ?? 0,
+      'numTrans': _numTran(manager),
       'taraExpoMin': 1000,
       'taraExpoMax': 5000,
       'deviceId': appManager.kioskConfig!.gate,
-      'inOut': 'I',
+      'inOut': esSalida ? 'O' : 'I',
       'procesoCompleto': 'N',
       'estadoVal': 1,
       'huellaJefe': '',
@@ -444,13 +533,14 @@ class ExpDobleService {
   ) {
     return {
       'placa': _safePlaca(manager),
-      'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
+      'vehicleAccessId': _vehicleAccessId(manager),
       'btnGuardarEnabled': false,
       'btnCancelarEnabled': true,
       'ver': 0,
       'imprimir': 1,
-      'pesoSalida': null,
-      'pesoIngreso': manager.pesoActualBascula,
+      // ?? FIX 400: 0 en vez de null en el campo que no aplica.
+      'pesoIngreso': _pesoIngresoParaEnviar(manager),
+      'pesoSalida': _pesoSalidaParaEnviar(manager),
       'tara': double.tryParse(manager.pesoTara ?? '0') ?? 0,
       'contenedor': _contenedorActivo(manager),
       'booking': manager.bookingExp,
@@ -480,15 +570,15 @@ class ExpDobleService {
       'placa': _safePlaca(manager),
       'danios': manager.daniosExp ?? manager.vehiculoObservaciones ?? '',
       'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
-      'vehicleAccessId': int.tryParse(manager.atkId ?? '0') ?? 0,
+      'vehicleAccessId': _vehicleAccessId(manager),
       'deviceId': appManager.kioskConfig?.gate,
       'ip': appManager.kioskConfig?.kioskServer,
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
   // APPLY RESPONSES
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
 
   void _applyInicializarResponse(
     Map<String, dynamic> response,
@@ -504,11 +594,7 @@ class ExpDobleService {
 
     final allData = <String, dynamic>{};
 
-    // IMPORTANTE: numtrans NO es el vehicleAccessId. Se guarda aparte y, por
-    // compatibilidad, también en atkId. El id real del acceso vehicular vive
-    // en `ocrDiSvVehicleAccessId` y NO se modifica aquí.
     if (data['numtrans'] != null) {
-      allData['atkId'] = data['numtrans'].toString();
       allData['expMuelleNumtrans'] = data['numtrans'].toString();
     }
     if (data['estado'] != null) {
@@ -567,7 +653,8 @@ class ExpDobleService {
     AtkTransactionManager manager,
   ) {
     final data = response['data'] as Map<String, dynamic>?;
-    final esValido = (data?['esValido'] as bool?) ?? (response['errorCode'] == 0);
+    final esValido =
+        (data?['esValido'] as bool?) ?? (response['errorCode'] == 0);
 
     manager.setManyWithoutNotify({
       'expMuelleValidarContenedorOk': esValido,
@@ -576,7 +663,8 @@ class ExpDobleService {
     });
 
     if (!esValido) {
-      final msg = (data?['mensajeError'] as String?) ??
+      final msg =
+          (data?['mensajeError'] as String?) ??
           (response['message'] as String?) ??
           'El contenedor no coincide con el DISV.';
       manager.setError(msg);
@@ -601,9 +689,9 @@ class ExpDobleService {
     manager.set('expMuelleGuardarOk', true);
   }
 
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
   // HELPERS
-  // ═══════════════════════════════════════════════════════════════
+  // ---------------------------------------------------------------
 
   String _fechaBarrera() {
     final now = DateTime.now();

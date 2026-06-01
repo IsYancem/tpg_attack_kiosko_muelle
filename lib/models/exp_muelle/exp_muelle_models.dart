@@ -30,11 +30,6 @@ class _H {
       : v.toString().trim().isEmpty
       ? null
       : v.toString().trim();
-
-  static List<String> toStrList(dynamic v) {
-    if (v is List) return v.whereType<String>().toList();
-    return [];
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
