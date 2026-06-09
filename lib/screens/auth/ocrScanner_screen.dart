@@ -1,36 +1,9 @@
-// lib/screens/auth/ocrScanner_screen.dart
-// Autor: Abraham Yance
-// Fecha: 2025-12-09
-// Pantalla OCR — lectura de contenedor, peso en báscula y RFID (muelle).
-//
-// Flujo actualizado:
-//   1) Espera OCR válido.
-//   2) Espera peso válido y estable.
-//   3) Espera placa por RFID.
-//   4) Guarda side RFID como side / doorNumber / sideGate.
-//   5) Activa paso visual "Facial".
-//   6) Consulta /kiosk/api/datos/conseguir-conductor.
-//   7) Usa conductor.chofer como DNI/RUC del chofer.
-//   8) Consulta /kiosk/api/datos/conseguir-data-conductor.
-//   9) Si falla la data del conductor, navega a ErrorScreen.
-//   10) Marca paso visual "Facial OK" cuando la data del conductor es correcta.
-//   11) Si no tiene contenedor, navega a PorteoSinContenedor.
-//   12) Si tiene contenedor, consulta transaccion y expo-repesaje para decidir pantalla.
-//   13) EXP_REPESAJE ? ExpRepesajeScreen (el runner ejecuta confirm dentro).
-//   14) EXP estándar ? ExpDobleScreen (el runner ejecuta confirm x cada movimiento EXP).
-//
-// IMPORTANTE:
-//   - OcrScannerScreen NO ejecuta ConfirmService.
-//   - El confirm lo ejecuta cada runner en su propia pantalla.
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:tpg_attack_kiosko_muelle/models/datos/consultar_placa_model.dart';
 import 'package:tpg_attack_kiosko_muelle/models/datos/consultar_transaccion_model.dart';
-import 'package:tpg_attack_kiosko_muelle/models/datos/expo-repesaje.dart';
-import 'package:tpg_attack_kiosko_muelle/models/exp_muelle/exp_save_request.dart';
 import 'package:tpg_attack_kiosko_muelle/models/websockets/websocket_models.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/errors/error_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/muelle/descarga_screen.dart';
@@ -39,8 +12,7 @@ import 'package:tpg_attack_kiosko_muelle/screens/muelle/expRepesaje_screen.dart'
 import 'package:tpg_attack_kiosko_muelle/screens/muelle/psc_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/confirm_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/datosApi_service.dart';
-import 'package:tpg_attack_kiosko_muelle/services/apis/expDoble/exp_doble_service.dart';
-import 'package:tpg_attack_kiosko_muelle/services/apis/expDoble/exp_doble_transaction_runner.dart';
+import 'package:tpg_attack_kiosko_muelle/services/apis/ocr_api_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/atk_transaction_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/logger/log_service.dart';
@@ -83,6 +55,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
   // Solo DatosApiService — el confirm lo ejecuta cada runner.
   final DatosApiService _datosApiService = DatosApiService();
   final ConfirmService _confirmService = ConfirmService();
+  final OcrApiService _ocrApiService = OcrApiService();
+  bool _ocrStatusUpdateSent = false;
 
   AppStateManager? _appManager;
   AtkTransactionManager? _manager;
@@ -153,6 +127,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       _navigated = false;
       _lastWeight = 0;
       _facialStarted = false;
+      _ocrStatusUpdateSent = false;
 
       _manager?.setManyWithoutNotify({
         'ocrFacialStarted': false,
@@ -1496,6 +1471,11 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       }
     }
 
+    await _markOcrAsReceivedIfNeeded(
+      reason:
+          'navigate_to_${_routeTargetScreen.isNotEmpty ? _routeTargetScreen : mov}',
+    );
+
     Navigator.pushAndRemoveUntil(
       context,
       PageRouteBuilder(
@@ -2004,85 +1984,83 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     }
   }
 
-  // Future<void> _procesarExpDoble(String placa) async {
-  //   final manager = _manager;
-  //   final appManager = _appManager;
-  //   if (manager == null || appManager == null) return;
+  Future<void> _markOcrAsReceivedIfNeeded({required String reason}) async {
+    final manager = _manager;
+    final appManager = _appManager;
 
-  //   final runner = ExpDobleTransactionRunner();
+    if (manager == null || appManager == null) return;
 
-  //   try {
-  //     await runner.run(
-  //       context: context,
-  //       appManager: appManager,
-  //       manager: manager,
-  //       onFinished: () async {
-  //         if (!mounted) return;
+    if (_ocrStatusUpdateSent) {
+      await LogService.instance.logRequest('OCR_UPDATE_STATUS_SKIP', {
+        'reason': 'already_sent',
+        'flowReason': reason,
+        'ocrPersistenceId': manager.ocrPersistenceId,
+        'ocrStatus': manager.ocrStatus,
+      });
+      return;
+    }
 
-  //         // Limpiar toda la transacción
-  //         manager.resetAll();
+    final uuid = (manager.ocrPersistenceId ?? '').trim();
 
-  //         // Construir request final para NestJS
-  //         final service = ExpDobleService();
-  //         final req = _buildExpSaveRequest(manager, placa);
+    if (uuid.isEmpty) {
+      await LogService.instance.logWarning('OCR_UPDATE_STATUS_SKIP', {
+        'reason': 'ocrPersistenceId_empty',
+        'flowReason': reason,
+        'ocrTransitId': manager.ocrTransitId,
+        'ocrStatus': manager.ocrStatus,
+        'ocrVehicleType': manager.ocrVehicleType,
+        'ocrContainerCount': manager.ocrContainerCount,
+      });
+      return;
+    }
 
-  //         try {
-  //           final resp = await service.guardar(manager, appManager);
-  //           LogService.instance.logRequest('EXP_SAVE_OK', resp);
-  //         } catch (e, st) {
-  //           LogService.instance.logError('EXP_SAVE_EX', e, st);
-  //         }
+    final currentStatus = (manager.ocrStatus ?? '').trim().toUpperCase();
 
-  //         // Volver a OCR
-  //         Navigator.pushAndRemoveUntil(
-  //           context,
-  //           PageRouteBuilder(
-  //             pageBuilder: (_, __, ___) => const OcrScannerScreen(),
-  //             transitionDuration: const Duration(milliseconds: 150),
-  //             transitionsBuilder: (_, animation, __, child) =>
-  //                 FadeTransition(opacity: animation, child: child),
-  //           ),
-  //           (route) => false,
-  //         );
-  //       },
-  //     );
-  //   } catch (e, st) {
-  //     await LogService.instance.logError('EXP_DOBLE_RUNNER_EX', e, st);
-  //   }
-  // }
+    if (currentStatus == 'RECIBIDO') {
+      _ocrStatusUpdateSent = true;
 
-  // ExpSaveRequestDto _buildExpSaveRequest(
-  //   AtkTransactionManager manager,
-  //   String placa,
-  // ) {
-  //   return ExpSaveRequestDto(
-  //     placa: placa,
-  //     cedula: manager.driverCedula ?? '',
-  //     nombreConductor: manager.driverName,
-  //     vehicleAccessId: manager.get('ocrDiSvVehicleAccessIdEntrada') ?? 0,
-  //     tpg: int.tryParse(_appManager?.kioskConfig?.patio ?? '1') ?? 1,
-  //     garitaLetra: _appManager?.kioskConfig?.gateLetter,
-  //     garitaNumero: int.tryParse(_appManager?.kioskConfig?.gate ?? '1'),
-  //     doorNumber: 2,
-  //     fechaBarrera: _fechaBarrera(),
-  //     tipoMov: 'EXP',
-  //     contenedor: manager.contenedor1 ?? '',
-  //     contenedorDisv: manager.contenedorExp,
-  //     booking: manager.bookingExp,
-  //     tara: double.tryParse(manager.pesoTara ?? '0') ?? 0,
-  //     pesoIngreso: manager.pesoActualBascula,
-  //     pesoSalida: manager.pesoSalida,
-  //     sello1: manager.sello1Exp,
-  //     sello2: manager.sello2Exp,
-  //     sello3: manager.sello3Exp,
-  //     sello4: manager.sello4Exp,
-  //     tipoTran: 'I',
-  //     codProducto: 'P01',
-  //     codTipoCarga: 'T01',
-  //     codBuque: 'B01',
-  //     numTrans: int.tryParse(manager.atkId ?? '0'),
-  //     procesoCompleto: 'N',
-  //     estadoVal: 1,
-  //   );
-  // }
+      await LogService.instance.logRequest('OCR_UPDATE_STATUS_SKIP', {
+        'reason': 'already_received',
+        'flowReason': reason,
+        'uuid': uuid,
+      });
+      return;
+    }
+
+    try {
+      final raw = await _ocrApiService.updateStatus(
+        uuid: uuid,
+        status: 'Recibido',
+        baseUrl: appManager.kioskConfig?.ocrService,
+      );
+
+      _ocrStatusUpdateSent = true;
+
+      manager.setManyWithoutNotify({
+        'ocrStatus': 'Recibido',
+        'ocrUpdateStatusOk': true,
+        'ocrUpdateStatusResponse': raw,
+        'ocrUpdateStatusAt': DateTime.now().toIso8601String(),
+      });
+
+      await LogService.instance.logRequest('OCR_UPDATE_STATUS_OK', {
+        'uuid': uuid,
+        'newStatus': 'Recibido',
+        'flowReason': reason,
+        'response': raw,
+      });
+    } catch (e, st) {
+      await LogService.instance.logError(
+        'OCR_UPDATE_STATUS_ERROR_NON_BLOCKING',
+        e,
+        st,
+      );
+
+      manager.setManyWithoutNotify({
+        'ocrUpdateStatusOk': false,
+        'ocrUpdateStatusError': e.toString(),
+        'ocrUpdateStatusAt': DateTime.now().toIso8601String(),
+      });
+    }
+  }
 }
