@@ -1,14 +1,10 @@
-// lib/screens/descarga_incoming/descarga_incoming_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:tpg_attack_kiosko_muelle/config/incoming/descarga_incoming_visibility_config.dart';
 import 'package:tpg_attack_kiosko_muelle/services/apis/descarga/descarga_transaction_runner.dart';
-import 'package:tpg_attack_kiosko_muelle/services/apis/staapisac_api_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/atk_transaction_manager.dart';
-import 'package:tpg_attack_kiosko_muelle/services/logger/log_service.dart';
 import 'package:tpg_attack_kiosko_muelle/utils/theme/app_colors.dart';
 import 'package:tpg_attack_kiosko_muelle/widgets/bodyTransaction/atkHeaderBar_transaction.dart';
 import 'package:tpg_attack_kiosko_muelle/widgets/bodyTransaction/atkSubheaderBar_transaction.dart';
@@ -46,32 +42,9 @@ class _DescargaScreenBodyState extends State<_DescargaScreenBody>
     super.initState();
     _runner = DescargaTransactionRunner();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-
-      final appState = context.read<AppStateManager>();
-      final txn = context.read<AtkTransactionManager>();
-
-      final id = (txn.driverCedula ?? '').trim();
-      if (id.isEmpty) return;
-
-      final sta = StaapisacApiService();
-
-      try {
-        final imgB64 = await sta.getFotoChoferBase64(
-          appState: appState,
-          choferId: id,
-        );
-
-        if (!mounted) return;
-
-        if (imgB64 != null && imgB64.isNotEmpty) {
-          txn.setDriverPhotoUrl(imgB64);
-        }
-      } catch (e, st) {
-        await LogService.instance.logError('DESCARGA_LOAD_PHOTO_FAIL', e, st);
-      }
-    });
+    // ⚠️ La foto del chofer ya NO se carga aquí.
+    // El runner la dispara en paralelo (_loadDriverPhoto, unawaited),
+    // así evitamos pedir la misma foto dos veces para el mismo driverCedula.
   }
 
   @override

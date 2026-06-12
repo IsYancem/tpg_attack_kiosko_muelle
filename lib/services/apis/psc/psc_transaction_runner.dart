@@ -1,3 +1,6 @@
+// lib/services/apis/psc/psc_transaction_runner.dart
+
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -20,6 +23,10 @@ class PscTransactionRunner {
   final PscApiService _api;
   final StaapisacApiService _staapisacApi;
 
+  // ⏱️ Segundos que la pantalla de éxito permanece visible antes de volver al
+  // OCR. Bájalo a 0–2 si lo quieres prácticamente inmediato.
+  static const int kSuccessDelaySeconds = 3;
+
   bool _running = false;
 
   String _usuario() => KioskUserEnv.usuario;
@@ -30,10 +37,12 @@ class PscTransactionRunner {
     required AtkTransactionManager manager,
   }) async {
     if (_running) {
-      await LogService.instance.logWarning('PSC_RUNNER_SKIPPED', {
-        'reason': 'Ya existe un runner PSC ejecutándose',
-        'snapshot': _snapshotManager(manager),
-      });
+      unawaited(
+        LogService.instance.logWarning('PSC_RUNNER_SKIPPED', {
+          'reason': 'Ya existe un runner PSC ejecutándose',
+          'snapshot': _snapshotManager(manager),
+        }),
+      );
       return;
     }
 
@@ -54,17 +63,31 @@ class PscTransactionRunner {
         'pscGateOpenSide': null,
       });
 
-      await _logRunnerStart(appManager, manager);
+      unawaited(_logRunnerStart(appManager, manager));
 
       // ─────────────────────────────────────────────
-      // PASO 1: NAVEGAR
+      // 🖼️ FOTO DEL CONDUCTOR EN PARALELO CON NAVEGAR
+      // INICIALIZAR necesita tieneFoto/msgFoto, así que la lanzamos YA
+      // (NAVEGAR no la necesita) y la esperamos justo antes de inicializar.
+      // _loadDriverPhotoForPsc captura sus propios errores y nunca relanza,
+      // por lo que este future siempre resuelve sin throw.
+      // ─────────────────────────────────────────────
+      final photoFuture = _loadDriverPhotoForPsc(
+        appManager: appManager,
+        manager: manager,
+      );
+
+      // ─────────────────────────────────────────────
+      // PASO 1: NAVEGAR (corre solapado con la foto)
       // ─────────────────────────────────────────────
       final navegarPayload = _buildNavegarRequest(appManager, manager);
-      await _logStepPayload(
-        step: 'NAVEGAR',
-        path: '/psc/navegar',
-        payload: navegarPayload,
-        manager: manager,
+      unawaited(
+        _logStepPayload(
+          step: 'NAVEGAR',
+          path: '/psc/navegar',
+          payload: navegarPayload,
+          manager: manager,
+        ),
       );
 
       final navegarRes = await _api.navegar(
@@ -74,14 +97,18 @@ class PscTransactionRunner {
 
       _applyNavegar(manager, navegarRes);
 
-      await _logStepResult(
-        step: 'NAVEGAR',
-        path: '/psc/navegar',
-        res: navegarRes,
-        manager: manager,
+      unawaited(
+        _logStepResult(
+          step: 'NAVEGAR',
+          path: '/psc/navegar',
+          res: navegarRes,
+          manager: manager,
+        ),
       );
 
       if (!navegarRes.isOk || navegarRes.data?.okToNavigate != true) {
+        // Dejar que termine la foto para no abandonar trabajo en vuelo.
+        await photoFuture;
         throw Exception('NAVEGAR: ${navegarRes.message}');
       }
 
@@ -90,22 +117,21 @@ class PscTransactionRunner {
       // ─────────────────────────────────────────────
       manager.setMany({
         'isLoading': true,
-        'mensajeInferior': 'Consultando foto del conductor...',
-      });
-
-      await _loadDriverPhotoForPsc(appManager: appManager, manager: manager);
-
-      manager.setMany({
-        'isLoading': true,
         'mensajeInferior': 'Inicializando porteo sin contenedor...',
       });
 
+      // ⏳ Garantiza que tieneFoto/msgFoto estén resueltos antes de armar
+      // el payload. Si la foto ya terminó (lo normal), no espera nada.
+      await photoFuture;
+
       final initPayload = _buildInicializarRequest(appManager, manager);
-      await _logStepPayload(
-        step: 'INICIALIZAR',
-        path: '/psc/psc/inicializar',
-        payload: initPayload,
-        manager: manager,
+      unawaited(
+        _logStepPayload(
+          step: 'INICIALIZAR',
+          path: '/psc/psc/inicializar',
+          payload: initPayload,
+          manager: manager,
+        ),
       );
 
       final initRes = await _api.inicializar(
@@ -115,11 +141,13 @@ class PscTransactionRunner {
 
       _applyInicializar(manager, initRes);
 
-      await _logStepResult(
-        step: 'INICIALIZAR',
-        path: '/psc/psc/inicializar',
-        res: initRes,
-        manager: manager,
+      unawaited(
+        _logStepResult(
+          step: 'INICIALIZAR',
+          path: '/psc/psc/inicializar',
+          res: initRes,
+          manager: manager,
+        ),
       );
 
       if (!initRes.isOk || initRes.data?.okToNavigate != true) {
@@ -135,11 +163,13 @@ class PscTransactionRunner {
       });
 
       final guardarPayload = _buildGuardarRequest(appManager, manager);
-      await _logStepPayload(
-        step: 'GUARDAR',
-        path: '/psc/psc/guardar',
-        payload: guardarPayload,
-        manager: manager,
+      unawaited(
+        _logStepPayload(
+          step: 'GUARDAR',
+          path: '/psc/psc/guardar',
+          payload: guardarPayload,
+          manager: manager,
+        ),
       );
 
       final guardarRes = await _api.guardar(
@@ -149,11 +179,13 @@ class PscTransactionRunner {
 
       _applyGuardar(manager, guardarRes);
 
-      await _logStepResult(
-        step: 'GUARDAR',
-        path: '/psc/psc/guardar',
-        res: guardarRes,
-        manager: manager,
+      unawaited(
+        _logStepResult(
+          step: 'GUARDAR',
+          path: '/psc/psc/guardar',
+          res: guardarRes,
+          manager: manager,
+        ),
       );
 
       if (!guardarRes.isOk || guardarRes.data?.ok != true) {
@@ -169,11 +201,13 @@ class PscTransactionRunner {
       });
 
       final terminarPayload = _buildTerminarRequest(manager);
-      await _logStepPayload(
-        step: 'TERMINAR',
-        path: '/psc/psc/terminar',
-        payload: terminarPayload,
-        manager: manager,
+      unawaited(
+        _logStepPayload(
+          step: 'TERMINAR',
+          path: '/psc/psc/terminar',
+          payload: terminarPayload,
+          manager: manager,
+        ),
       );
 
       final terminarRes = await _api.terminar(
@@ -183,11 +217,13 @@ class PscTransactionRunner {
 
       _applyTerminar(manager, terminarRes);
 
-      await _logStepResult(
-        step: 'TERMINAR',
-        path: '/psc/psc/terminar',
-        res: terminarRes,
-        manager: manager,
+      unawaited(
+        _logStepResult(
+          step: 'TERMINAR',
+          path: '/psc/psc/terminar',
+          res: terminarRes,
+          manager: manager,
+        ),
       );
 
       if (!terminarRes.isOk || terminarRes.data?.okToNavigate != true) {
@@ -213,14 +249,16 @@ class PscTransactionRunner {
         'pscTerminado': true,
       });
 
-      await LogService.instance.logRequest('PSC_RUNNER_OK', {
-        'latencyMs': sw.elapsedMilliseconds,
-        'snapshot': _snapshotManager(manager),
-      });
+      unawaited(
+        LogService.instance.logRequest('PSC_RUNNER_OK', {
+          'latencyMs': sw.elapsedMilliseconds,
+          'snapshot': _snapshotManager(manager),
+        }),
+      );
 
       // IMPORTANTE:
-      // Esperar 3 segundos antes de volver al OCR para evitar novedades.
-      await Future.delayed(const Duration(seconds: 3));
+      // Pequeña espera antes de volver al OCR para evitar novedades.
+      await Future.delayed(const Duration(seconds: kSuccessDelaySeconds));
 
       await _resetTransactionBeforeOcr(manager);
 
@@ -238,13 +276,15 @@ class PscTransactionRunner {
         (route) => false,
       );
     } catch (e, st) {
-      await LogService.instance.logError('PSC_RUNNER_ERROR', e, st);
+      unawaited(LogService.instance.logError('PSC_RUNNER_ERROR', e, st));
 
-      await LogService.instance.logRequest('PSC_RUNNER_FAIL_CONTEXT', {
-        'latencyMs': sw.elapsedMilliseconds,
-        'error': _cleanError(e),
-        'snapshot': _snapshotManager(manager),
-      });
+      unawaited(
+        LogService.instance.logRequest('PSC_RUNNER_FAIL_CONTEXT', {
+          'latencyMs': sw.elapsedMilliseconds,
+          'error': _cleanError(e),
+          'snapshot': _snapshotManager(manager),
+        }),
+      );
 
       manager.setMany({'isLoading': false, 'pscRunning': false});
 
@@ -266,11 +306,13 @@ class PscTransactionRunner {
     } finally {
       _running = false;
 
-      await LogService.instance.logRequest('PSC_RUNNER_END', {
-        'latencyMs': sw.elapsedMilliseconds,
-        'running': _running,
-        'snapshot': _snapshotManager(manager),
-      });
+      unawaited(
+        LogService.instance.logRequest('PSC_RUNNER_END', {
+          'latencyMs': sw.elapsedMilliseconds,
+          'running': _running,
+          'snapshot': _snapshotManager(manager),
+        }),
+      );
     }
   }
 
@@ -497,51 +539,55 @@ class PscTransactionRunner {
     final gate = _rfidGate(manager);
     final side = _rfidSide(manager);
 
-    await LogService.instance.logRequest('PSC_GATE_OPEN_START', {
-      'url': url,
-      'urlSource': 'kioskConfig.controlGateService',
-      'gate': gate,
-      'side': side,
-      'gateSource': 'manager.rfidGate',
-      'sideSource': 'manager.side / manager.doorNumber / manager.sideGate',
-      'headerApiKeySource': 'gateConfig.apiKey',
-      'bodyApiKeySource': 'gateConfig.keyPlc',
-      'managerRfidGate': manager.get('rfidGate'),
-      'managerSide': manager.get('side'),
-      'managerDoorNumber': manager.get('doorNumber'),
-      'sideGate': manager.sideGate,
-      'kioskControlGateService': kioskCfg?.controlGateService,
-      'gateConfigApiKeyLen': headerApiKey.length,
-      'gateConfigKeyPlcLen': bodyApiKey.length,
-      'kioskGateIgnored': kioskCfg?.gate,
-      'configGateLocationIgnored': gateCfg?.gateLocation,
-      'hasUrl': url.isNotEmpty,
-      'hasHeaderApiKey': headerApiKey.isNotEmpty,
-      'hasBodyApiKey': bodyApiKey.isNotEmpty,
-      'snapshot': _snapshotManager(manager),
-    });
+    unawaited(
+      LogService.instance.logRequest('PSC_GATE_OPEN_START', {
+        'url': url,
+        'urlSource': 'kioskConfig.controlGateService',
+        'gate': gate,
+        'side': side,
+        'gateSource': 'manager.rfidGate',
+        'sideSource': 'manager.side / manager.doorNumber / manager.sideGate',
+        'headerApiKeySource': 'gateConfig.apiKey',
+        'bodyApiKeySource': 'gateConfig.keyPlc',
+        'managerRfidGate': manager.get('rfidGate'),
+        'managerSide': manager.get('side'),
+        'managerDoorNumber': manager.get('doorNumber'),
+        'sideGate': manager.sideGate,
+        'kioskControlGateService': kioskCfg?.controlGateService,
+        'gateConfigApiKeyLen': headerApiKey.length,
+        'gateConfigKeyPlcLen': bodyApiKey.length,
+        'kioskGateIgnored': kioskCfg?.gate,
+        'configGateLocationIgnored': gateCfg?.gateLocation,
+        'hasUrl': url.isNotEmpty,
+        'hasHeaderApiKey': headerApiKey.isNotEmpty,
+        'hasBodyApiKey': bodyApiKey.isNotEmpty,
+        'snapshot': _snapshotManager(manager),
+      }),
+    );
 
     if (url.isEmpty ||
         headerApiKey.isEmpty ||
         bodyApiKey.isEmpty ||
         gate <= 0 ||
         side <= 0) {
-      await LogService.instance.logWarning('PSC_GATE_OPEN_SKIPPED', {
-        'reason': 'Configuración incompleta para abrir barrera',
-        'urlEmpty': url.isEmpty,
-        'headerApiKeyEmpty': headerApiKey.isEmpty,
-        'bodyApiKeyEmpty': bodyApiKey.isEmpty,
-        'gate': gate,
-        'side': side,
-        'kioskControlGateService': kioskCfg?.controlGateService,
-        'gateConfigApiKeyLen': headerApiKey.length,
-        'gateConfigKeyPlcLen': bodyApiKey.length,
-        'managerRfidGate': manager.get('rfidGate'),
-        'managerSide': manager.get('side'),
-        'managerDoorNumber': manager.get('doorNumber'),
-        'sideGate': manager.sideGate,
-        'snapshot': _snapshotManager(manager),
-      });
+      unawaited(
+        LogService.instance.logWarning('PSC_GATE_OPEN_SKIPPED', {
+          'reason': 'Configuración incompleta para abrir barrera',
+          'urlEmpty': url.isEmpty,
+          'headerApiKeyEmpty': headerApiKey.isEmpty,
+          'bodyApiKeyEmpty': bodyApiKey.isEmpty,
+          'gate': gate,
+          'side': side,
+          'kioskControlGateService': kioskCfg?.controlGateService,
+          'gateConfigApiKeyLen': headerApiKey.length,
+          'gateConfigKeyPlcLen': bodyApiKey.length,
+          'managerRfidGate': manager.get('rfidGate'),
+          'managerSide': manager.get('side'),
+          'managerDoorNumber': manager.get('doorNumber'),
+          'sideGate': manager.sideGate,
+          'snapshot': _snapshotManager(manager),
+        }),
+      );
 
       manager.setManyWithoutNotify({
         'pscGateOpenRequested': true,
@@ -571,17 +617,19 @@ class PscTransactionRunner {
       'pscGateOpenSide': side,
     });
 
-    await LogService.instance.logRequest('PSC_GATE_OPEN_RESULT', {
-      'opened': opened,
-      'url': url,
-      'urlSource': 'kioskConfig.controlGateService',
-      'gate': gate,
-      'side': side,
-      'gateLocation': gate.toString(),
-      'headerApiKeySource': 'gateConfig.apiKey',
-      'bodyApiKeySource': 'gateConfig.keyPlc',
-      'snapshot': _snapshotManager(manager),
-    });
+    unawaited(
+      LogService.instance.logRequest('PSC_GATE_OPEN_RESULT', {
+        'opened': opened,
+        'url': url,
+        'urlSource': 'kioskConfig.controlGateService',
+        'gate': gate,
+        'side': side,
+        'gateLocation': gate.toString(),
+        'headerApiKeySource': 'gateConfig.apiKey',
+        'bodyApiKeySource': 'gateConfig.keyPlc',
+        'snapshot': _snapshotManager(manager),
+      }),
+    );
 
     if (!opened) {
       throw Exception('No se pudo abrir la barrera.');
@@ -843,10 +891,12 @@ class PscTransactionRunner {
   Future<void> _resetTransactionBeforeOcr(AtkTransactionManager manager) async {
     final before = _snapshotManager(manager);
 
-    await LogService.instance.logRequest('PSC_RESET_BEFORE_OCR_START', {
-      'reason': 'PSC completado correctamente; limpiando data antes de OCR',
-      'snapshotBefore': before,
-    });
+    unawaited(
+      LogService.instance.logRequest('PSC_RESET_BEFORE_OCR_START', {
+        'reason': 'PSC completado correctamente; limpiando data antes de OCR',
+        'snapshotBefore': before,
+      }),
+    );
 
     manager.resetAll();
 
@@ -868,9 +918,11 @@ class PscTransactionRunner {
       'rfidGate': null,
     });
 
-    await LogService.instance.logRequest('PSC_RESET_BEFORE_OCR_DONE', {
-      'snapshotAfter': _snapshotManager(manager),
-    });
+    unawaited(
+      LogService.instance.logRequest('PSC_RESET_BEFORE_OCR_DONE', {
+        'snapshotAfter': _snapshotManager(manager),
+      }),
+    );
   }
 
   Future<void> _loadDriverPhotoForPsc({
@@ -879,15 +931,17 @@ class PscTransactionRunner {
   }) async {
     final photoId = _resolveStaapisacPhotoId(manager);
 
-    await LogService.instance.logRequest('PSC_DRIVER_PHOTO_START', {
-      'photoId': photoId,
-      'hasStaapisacAuth': appManager.hasStaapisacAuth,
-      'driverCedula': manager.driverCedula,
-      'driverId': manager.driverId,
-      'conseguirDataConductorId': manager.conseguirDataConductorId,
-      'conseguirDataConductorIdentificationNumber':
-          manager.conseguirDataConductorIdentificationNumber,
-    });
+    unawaited(
+      LogService.instance.logRequest('PSC_DRIVER_PHOTO_START', {
+        'photoId': photoId,
+        'hasStaapisacAuth': appManager.hasStaapisacAuth,
+        'driverCedula': manager.driverCedula,
+        'driverId': manager.driverId,
+        'conseguirDataConductorId': manager.conseguirDataConductorId,
+        'conseguirDataConductorIdentificationNumber':
+            manager.conseguirDataConductorIdentificationNumber,
+      }),
+    );
 
     if (photoId.isEmpty) {
       manager.setManyWithoutNotify({
@@ -897,25 +951,31 @@ class PscTransactionRunner {
         'pscDriverPhotoMessage': 'ID de foto vacío',
       });
 
-      await LogService.instance.logWarning('PSC_DRIVER_PHOTO_SKIPPED', {
-        'reason': 'No se encontró ID para consultar foto del conductor',
-        'snapshot': _snapshotManager(manager),
-      });
+      unawaited(
+        LogService.instance.logWarning('PSC_DRIVER_PHOTO_SKIPPED', {
+          'reason': 'No se encontró ID para consultar foto del conductor',
+          'snapshot': _snapshotManager(manager),
+        }),
+      );
 
       return;
     }
 
     try {
       if (!appManager.hasStaapisacAuth) {
-        await LogService.instance.logRequest('PSC_STAAPISAC_LOGIN_START', {
-          'reason': 'No hay token STAAPISAC antes de consultar foto',
-        });
+        unawaited(
+          LogService.instance.logRequest('PSC_STAAPISAC_LOGIN_START', {
+            'reason': 'No hay token STAAPISAC antes de consultar foto',
+          }),
+        );
 
         await _staapisacApi.loginStaapisac(appState: appManager);
 
-        await LogService.instance.logRequest('PSC_STAAPISAC_LOGIN_OK', {
-          'hasStaapisacAuth': appManager.hasStaapisacAuth,
-        });
+        unawaited(
+          LogService.instance.logRequest('PSC_STAAPISAC_LOGIN_OK', {
+            'hasStaapisacAuth': appManager.hasStaapisacAuth,
+          }),
+        );
       }
 
       final imgB64 = await _staapisacApi.getFotoChoferBase64(
@@ -934,16 +994,18 @@ class PscTransactionRunner {
         'pscDriverPhotoMessage': hasImage ? 'OK' : 'Sin foto registrada',
       });
 
-      await LogService.instance.logRequest('PSC_DRIVER_PHOTO_RESULT', {
-        'photoId': photoId,
-        'hasImage': hasImage,
-        'imageLength': imgB64?.length ?? 0,
-        'savedDriverPhotoUrl': hasImage,
-        'savedDriverPhotoBase64': hasImage,
-        'snapshot': _snapshotManager(manager),
-      });
+      unawaited(
+        LogService.instance.logRequest('PSC_DRIVER_PHOTO_RESULT', {
+          'photoId': photoId,
+          'hasImage': hasImage,
+          'imageLength': imgB64?.length ?? 0,
+          'savedDriverPhotoUrl': hasImage,
+          'savedDriverPhotoBase64': hasImage,
+          'snapshot': _snapshotManager(manager),
+        }),
+      );
     } catch (e, st) {
-      await LogService.instance.logError('PSC_DRIVER_PHOTO_ERROR', e, st);
+      unawaited(LogService.instance.logError('PSC_DRIVER_PHOTO_ERROR', e, st));
 
       manager.setMany({
         'driverPhotoUrl': null,

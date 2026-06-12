@@ -301,7 +301,6 @@ class LoginOrchestratorService {
     if (copy.containsKey('password')) {
       final raw = copy['password']?.toString() ?? '';
       copy['password'] = raw.isEmpty ? '' : '***';
-      copy['passwordLength'] = raw.length;
     }
 
     return copy;

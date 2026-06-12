@@ -1,4 +1,5 @@
 // lib/services/apis/descarga/descarga_service.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,11 @@ import 'package:tpg_attack_kiosko_muelle/utils/env_utils.dart';
 
 class DescargaService {
   final _log = LogService.instance;
+
+  // 🐛 Logs HTTP verbosos (request/response/decoded completos + prettyJson).
+  // Déjalo en false en producción: el prettyJson serializa el body entero
+  // y mete I/O en la ruta crítica. Actívalo solo para depurar.
+  static const bool _verboseHttpLogs = false;
 
   // ─────────────────────────────────────────────
   // 🔐 Cache de headers + refresh
@@ -71,21 +77,23 @@ class DescargaService {
       'peso': manager.pesoActualBascula,
     };
 
-    await _log.logRequest('DESCARGA_INICIALIZAR_REQ', body);
+    unawaited(_log.logRequest('DESCARGA_INICIALIZAR_REQ', body));
 
     final sw = Stopwatch()..start();
     try {
       final res = await _post('/descarga/initial', body);
 
-      await _log.logRequest('DESCARGA_INICIALIZAR_RES', {
-        'latency_ms': sw.elapsedMilliseconds,
-        'errorCode': res['errorCode'],
-        'message': res['message'],
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_INICIALIZAR_RES', {
+          'latency_ms': sw.elapsedMilliseconds,
+          'errorCode': res['errorCode'],
+          'message': res['message'],
+        }),
+      );
 
       return DescargaApiResponse.fromJson(res);
     } catch (e, st) {
-      await _log.logError('DESCARGA_INICIALIZAR_EX', e, st);
+      unawaited(_log.logError('DESCARGA_INICIALIZAR_EX', e, st));
       rethrow;
     }
   }
@@ -143,28 +151,30 @@ class DescargaService {
       'codEmpresaF': app.kioskConfig?.gateLetter,
     };
 
-    await _log.logRequest('DESCARGA_GUARDAR_REQ', body);
+    unawaited(_log.logRequest('DESCARGA_GUARDAR_REQ', body));
 
     final sw = Stopwatch()..start();
     try {
       final res = await _post('/descarga/guardar', body);
 
-      await _log.logRequest('DESCARGA_GUARDAR_RES', {
-        'latency_ms': sw.elapsedMilliseconds,
-        'errorCode': res['errorCode'],
-        'message': res['message'],
-        'numero_transaccion': res['data']?['numero_transaccion'],
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_GUARDAR_RES', {
+          'latency_ms': sw.elapsedMilliseconds,
+          'errorCode': res['errorCode'],
+          'message': res['message'],
+          'numero_transaccion': res['data']?['numero_transaccion'],
+        }),
+      );
 
       return DescargaApiResponse.fromJson(res);
     } catch (e, st) {
-      await _log.logError('DESCARGA_GUARDAR_EX', e, st);
+      unawaited(_log.logError('DESCARGA_GUARDAR_EX', e, st));
       rethrow;
     }
   }
 
   // ─────────────────────────────────────────────
-  // HTTP HELPER (CON LOGS DE CONEXIÓN)
+  // HTTP HELPER (LOGS NO BLOQUEANTES)
   // ─────────────────────────────────────────────
   Future<Map<String, dynamic>> _post(
     String path,
@@ -173,23 +183,26 @@ class DescargaService {
     final url = '${_baseUrl}kiosk/api$path';
     final sw = Stopwatch()..start();
 
-    await _log.logConnStart(
-      kind: 'http',
-      target: url,
-      extra: {'method': 'POST'},
+    unawaited(
+      _log.logConnStart(kind: 'http', target: url, extra: {'method': 'POST'}),
     );
 
     try {
       var headers = await _headers();
 
-      await _log.logRequest('DESCARGA_HTTP_FULL_REQUEST', {
-        'url': url,
-        'method': 'POST',
-        'headers': _safeHeaders(headers),
-        'body': body,
-        'bodyPretty': _prettyJson(body),
-      });
+      if (_verboseHttpLogs) {
+        unawaited(
+          _log.logRequest('DESCARGA_HTTP_FULL_REQUEST', {
+            'url': url,
+            'method': 'POST',
+            'headers': _safeHeaders(headers),
+            'body': body,
+            'bodyPretty': _prettyJson(body),
+          }),
+        );
+      }
 
+      // 🚀 La red sale de inmediato: no hay I/O de disco awaited delante.
       var response = await http.post(
         Uri.parse(url),
         headers: headers,
@@ -197,30 +210,38 @@ class DescargaService {
       );
 
       if (response.statusCode == 401 || response.statusCode == 403) {
-        await _log.logWarning('DESCARGA_TOKEN_EXPIRED', {
-          'status': response.statusCode,
-          'body': response.body,
-        });
+        unawaited(
+          _log.logWarning('DESCARGA_TOKEN_EXPIRED', {
+            'status': response.statusCode,
+            'body': response.body,
+          }),
+        );
 
         invalidateHeadersCache();
 
         final appState = AppStateManager.instance;
         final refreshed = await AuthApiService.refresh(appState);
 
-        await _log.logRequest('DESCARGA_REFRESH_TOKEN_RESULT', {
-          'refreshed': refreshed,
-        });
+        unawaited(
+          _log.logRequest('DESCARGA_REFRESH_TOKEN_RESULT', {
+            'refreshed': refreshed,
+          }),
+        );
 
         if (refreshed) {
           headers = await _headers();
 
-          await _log.logRequest('DESCARGA_HTTP_FULL_RETRY_REQUEST', {
-            'url': url,
-            'method': 'POST',
-            'headers': _safeHeaders(headers),
-            'body': body,
-            'bodyPretty': _prettyJson(body),
-          });
+          if (_verboseHttpLogs) {
+            unawaited(
+              _log.logRequest('DESCARGA_HTTP_FULL_RETRY_REQUEST', {
+                'url': url,
+                'method': 'POST',
+                'headers': _safeHeaders(headers),
+                'body': body,
+                'bodyPretty': _prettyJson(body),
+              }),
+            );
+          }
 
           response = await http.post(
             Uri.parse(url),
@@ -230,20 +251,26 @@ class DescargaService {
         }
       }
 
-      await _log.logConnEnd(
-        kind: 'http',
-        target: url,
-        ok: response.statusCode == 200 || response.statusCode == 201,
-        ms: sw.elapsedMilliseconds,
-        extra: {'statusCode': response.statusCode},
+      unawaited(
+        _log.logConnEnd(
+          kind: 'http',
+          target: url,
+          ok: response.statusCode == 200 || response.statusCode == 201,
+          ms: sw.elapsedMilliseconds,
+          extra: {'statusCode': response.statusCode},
+        ),
       );
 
-      await _log.logRequest('DESCARGA_HTTP_FULL_RESPONSE', {
-        'url': url,
-        'statusCode': response.statusCode,
-        'latencyMs': sw.elapsedMilliseconds,
-        'rawBody': response.body,
-      });
+      if (_verboseHttpLogs) {
+        unawaited(
+          _log.logRequest('DESCARGA_HTTP_FULL_RESPONSE', {
+            'url': url,
+            'statusCode': response.statusCode,
+            'latencyMs': sw.elapsedMilliseconds,
+            'rawBody': response.body,
+          }),
+        );
+      }
 
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception('HTTP ${response.statusCode} | ${response.body}');
@@ -255,23 +282,29 @@ class DescargaService {
         throw Exception('Respuesta inválida: ${response.body}');
       }
 
-      await _log.logRequest('DESCARGA_HTTP_DECODED_RESPONSE', {
-        'url': url,
-        'decoded': decoded,
-        'decodedPretty': _prettyJson(decoded),
-      });
+      if (_verboseHttpLogs) {
+        unawaited(
+          _log.logRequest('DESCARGA_HTTP_DECODED_RESPONSE', {
+            'url': url,
+            'decoded': decoded,
+            'decodedPretty': _prettyJson(decoded),
+          }),
+        );
+      }
 
       return decoded;
     } catch (e) {
-      await _log.logConnEnd(
-        kind: 'http',
-        target: url,
-        ok: false,
-        ms: sw.elapsedMilliseconds,
-        error: e,
+      unawaited(
+        _log.logConnEnd(
+          kind: 'http',
+          target: url,
+          ok: false,
+          ms: sw.elapsedMilliseconds,
+          error: e,
+        ),
       );
 
-      await _log.logError('DESCARGA_HTTP_FULL_ERROR', e);
+      unawaited(_log.logError('DESCARGA_HTTP_FULL_ERROR', e));
 
       rethrow;
     }

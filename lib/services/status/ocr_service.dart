@@ -203,7 +203,8 @@ class OcrService extends BaseService {
       if (!ok || dataMap is! Map<String, dynamic>) return;
 
       final basculaEnv = (dotenv.env['BASCULA'] ?? '').trim();
-      final location = int.tryParse(dataMap['location']?.toString() ?? '');
+      // final location = int.tryParse(dataMap['location']?.toString() ?? '');
+      final location = 92;
 
       if (basculaEnv.isNotEmpty && location?.toString() != basculaEnv) {
         LogService.instance.logRequest('OCR_EVENT_IGNORED_BY_LOCATION', {

@@ -1,5 +1,7 @@
 // lib/services/apis/descarga/descarga_transaction_runner.dart
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/auth/ocrScanner_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/errors/error_screen.dart';
@@ -13,6 +15,10 @@ import 'package:tpg_attack_kiosko_muelle/services/status/gate_control_service.da
 class DescargaTransactionRunner {
   final DescargaService _service;
   final LogService _log;
+
+  // ⏱️ Segundos que la pantalla de éxito permanece visible antes de volver al OCR.
+  // Bájalo a 0–3 si quieres que sea prácticamente inmediato.
+  static const int kSuccessCountdownSeconds = 5;
 
   DescargaTransactionRunner({DescargaService? service, LogService? log})
     : _service = service ?? DescargaService(),
@@ -61,27 +67,32 @@ class DescargaTransactionRunner {
 
       final ocrContainerBeforeInit = _snapshotOcrContainerData(manager);
 
-      await _log.logRequest('DESCARGA_RUNNER_INIT_START', {
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
-        'ocrContainerCount': manager.get('ocrContainerCount'),
-        'pesoActualBascula': manager.pesoActualBascula,
-        'ocrContainerBeforeInit': ocrContainerBeforeInit,
-      });
+      // 📝 Logs de diagnóstico: NO se esperan (fuera de la ruta crítica).
+      unawaited(
+        _log.logRequest('DESCARGA_RUNNER_INIT_START', {
+          'placa': manager.vehiculoPlaca,
+          'contenedor': manager.contenedor,
+          'contenedor1': manager.get('contenedor1'),
+          'contenedor2': manager.get('contenedor2'),
+          'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+          'ocrContainerCount': manager.get('ocrContainerCount'),
+          'pesoActualBascula': manager.pesoActualBascula,
+          'ocrContainerBeforeInit': ocrContainerBeforeInit,
+        }),
+      );
 
       final initResp = await _service.inicializar(manager, appManager);
 
       final initMap = initResp.toManagerMap();
 
-      await _log.logRequest('DESCARGA_RUNNER_INIT_RESPONSE_FULL', {
-        'errorCode': initResp.errorCode,
-        'message': initResp.message,
-        'managerMap': initMap,
-        'ocrContainerBeforeInit': ocrContainerBeforeInit,
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_RUNNER_INIT_RESPONSE_FULL', {
+          'errorCode': initResp.errorCode,
+          'message': initResp.message,
+          'managerMap': initMap,
+          'ocrContainerBeforeInit': ocrContainerBeforeInit,
+        }),
+      );
 
       if (initResp.errorCode != 0) {
         _goToErrorScreen(context, manager, initResp.message);
@@ -104,60 +115,71 @@ class DescargaTransactionRunner {
       if (taraOcr.isNotEmpty && taraOcr != '0') {
         manager.setMany({'pesoTara': taraOcr, 'taraFuente': 'OCR'});
 
-        await _log.logRequest('DESCARGA_TARA_FROM_OCR_SET', {
+        unawaited(
+          _log.logRequest('DESCARGA_TARA_FROM_OCR_SET', {
+            'contenedor': manager.contenedor,
+            'contenedor1': manager.get('contenedor1'),
+            'contenedor2': manager.get('contenedor2'),
+            'taraOcr': taraOcr,
+          }),
+        );
+      }
+
+      // 🖼️ FOTO DEL CHOFER EN PARALELO (decorativa).
+      // NO bloquea guardar ni la apertura de barrera. Cuando llegue,
+      // setDriverPhotoUrl() notificará y la UI se actualizará sola.
+      unawaited(_loadDriverPhoto(appManager: appManager, manager: manager));
+
+      unawaited(
+        _log.logRequest('DESCARGA_RUNNER_AFTER_INIT_MANAGER_STATE', {
+          'placa': manager.vehiculoPlaca,
           'contenedor': manager.contenedor,
           'contenedor1': manager.get('contenedor1'),
           'contenedor2': manager.get('contenedor2'),
-          'taraOcr': taraOcr,
-        });
-      }
+          'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+          'ocrContainerCount': manager.get('ocrContainerCount'),
+          'pesoIngreso': manager.pesoActualBascula,
+          'pesoTara': manager.pesoTara,
+          'pesoPorteo': manager.pesoPorteo,
+          'driverCedula': manager.driverCedula,
+          'driverName': manager.driverName,
+          'vehiculoEmpresa': manager.vehiculoEmpresa,
+        }),
+      );
 
-      await _loadDriverPhoto(appManager: appManager, manager: manager);
-
-      await _log.logRequest('DESCARGA_RUNNER_AFTER_INIT_MANAGER_STATE', {
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
-        'ocrContainerCount': manager.get('ocrContainerCount'),
-        'pesoIngreso': manager.pesoActualBascula,
-        'pesoTara': manager.pesoTara,
-        'pesoPorteo': manager.pesoPorteo,
-        'driverCedula': manager.driverCedula,
-        'driverName': manager.driverName,
-        'vehiculoEmpresa': manager.vehiculoEmpresa,
-      });
-
-      // PASO 2: GUARDAR SOLO SI INICIALIZÓ OK
+      // PASO 2: GUARDAR SOLO SI INICIALIZÓ OK (ya no espera la foto)
       manager.setManyWithoutNotify({
         'isLoading': true,
         'mensajeInferior': 'Guardando descarga...',
       });
 
-      await _log.logRequest('DESCARGA_RUNNER_GUARDAR_START', {
-        'reason': 'Inicialización correcta, procede guardar',
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
-        'ocrContainerCount': manager.get('ocrContainerCount'),
-        'pesoIngreso': manager.pesoActualBascula,
-        'pesoTara': manager.pesoTara,
-        'pesoPorteo': manager.pesoPorteo,
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_RUNNER_GUARDAR_START', {
+          'reason': 'Inicialización correcta, procede guardar',
+          'placa': manager.vehiculoPlaca,
+          'contenedor': manager.contenedor,
+          'contenedor1': manager.get('contenedor1'),
+          'contenedor2': manager.get('contenedor2'),
+          'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+          'ocrContainerCount': manager.get('ocrContainerCount'),
+          'pesoIngreso': manager.pesoActualBascula,
+          'pesoTara': manager.pesoTara,
+          'pesoPorteo': manager.pesoPorteo,
+        }),
+      );
 
       final guardarResp = await _service.guardar(manager, appManager);
 
-      await _log.logRequest('DESCARGA_RUNNER_GUARDAR_RESPONSE_FULL', {
-        'errorCode': guardarResp.errorCode,
-        'message': guardarResp.message,
-        'managerMap': guardarResp.toManagerMap(),
-        'contenedorEnviado': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_RUNNER_GUARDAR_RESPONSE_FULL', {
+          'errorCode': guardarResp.errorCode,
+          'message': guardarResp.message,
+          'managerMap': guardarResp.toManagerMap(),
+          'contenedorEnviado': manager.contenedor,
+          'contenedor1': manager.get('contenedor1'),
+          'contenedor2': manager.get('contenedor2'),
+        }),
+      );
 
       if (guardarResp.errorCode != 0) {
         _goToErrorScreen(context, manager, guardarResp.message);
@@ -175,17 +197,20 @@ class DescargaTransactionRunner {
         'descargaGateOpenSide': null,
       });
 
-      await _log.logRequest('DESCARGA_RUNNER_BEFORE_GATE_OPEN', {
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'rfidGate': manager.get('rfidGate'),
-        'side': manager.get('side'),
-        'doorNumber': manager.get('doorNumber'),
-        'sideGate': manager.sideGate,
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_RUNNER_BEFORE_GATE_OPEN', {
+          'placa': manager.vehiculoPlaca,
+          'contenedor': manager.contenedor,
+          'contenedor1': manager.get('contenedor1'),
+          'contenedor2': manager.get('contenedor2'),
+          'rfidGate': manager.get('rfidGate'),
+          'side': manager.get('side'),
+          'doorNumber': manager.get('doorNumber'),
+          'sideGate': manager.sideGate,
+        }),
+      );
 
+      // 🚧 CRÍTICO: la apertura de barrera SÍ se espera.
       await _openGateAfterSuccess(appManager: appManager, manager: manager);
 
       manager.setMany({
@@ -194,7 +219,7 @@ class DescargaTransactionRunner {
         'descargaGateOpenOk': true,
       });
 
-      const totalSeconds = 20;
+      const totalSeconds = kSuccessCountdownSeconds;
 
       for (int i = totalSeconds; i >= 0; i--) {
         if (!context.mounted) return;
@@ -205,20 +230,22 @@ class DescargaTransactionRunner {
         await Future.delayed(const Duration(seconds: 1));
       }
 
-      await _log.logRequest('DESCARGA_AUTO_EXIT', {
-        'after_seconds': totalSeconds,
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'rfidGate': manager.get('rfidGate'),
-        'side': manager.get('side'),
-        'doorNumber': manager.get('doorNumber'),
-        'descargaGateOpenRequested': manager.get('descargaGateOpenRequested'),
-        'descargaGateOpenOk': manager.get('descargaGateOpenOk'),
-        'descargaGateOpenGate': manager.get('descargaGateOpenGate'),
-        'descargaGateOpenSide': manager.get('descargaGateOpenSide'),
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_AUTO_EXIT', {
+          'after_seconds': totalSeconds,
+          'placa': manager.vehiculoPlaca,
+          'contenedor': manager.contenedor,
+          'contenedor1': manager.get('contenedor1'),
+          'contenedor2': manager.get('contenedor2'),
+          'rfidGate': manager.get('rfidGate'),
+          'side': manager.get('side'),
+          'doorNumber': manager.get('doorNumber'),
+          'descargaGateOpenRequested': manager.get('descargaGateOpenRequested'),
+          'descargaGateOpenOk': manager.get('descargaGateOpenOk'),
+          'descargaGateOpenGate': manager.get('descargaGateOpenGate'),
+          'descargaGateOpenSide': manager.get('descargaGateOpenSide'),
+        }),
+      );
 
       manager.resetAll();
       manager.setFlowRemainingSeconds(null);
@@ -246,7 +273,7 @@ class DescargaTransactionRunner {
   Future<void> _countdownAndReturnToOcr({
     required BuildContext context,
     required AtkTransactionManager manager,
-    int seconds = 20,
+    int seconds = kSuccessCountdownSeconds,
   }) async {
     for (int i = seconds; i >= 0; i--) {
       if (!context.mounted) return;
@@ -257,11 +284,13 @@ class DescargaTransactionRunner {
       await Future.delayed(const Duration(seconds: 1));
     }
 
-    _log.logRequest('DESCARGA_INIT_ONLY_AUTO_EXIT', {
-      'after_seconds': seconds,
-      'placa': manager.vehiculoPlaca,
-      'contenedor': manager.contenedor,
-    });
+    unawaited(
+      _log.logRequest('DESCARGA_INIT_ONLY_AUTO_EXIT', {
+        'after_seconds': seconds,
+        'placa': manager.vehiculoPlaca,
+        'contenedor': manager.contenedor,
+      }),
+    );
 
     manager.resetAll();
     manager.setFlowRemainingSeconds(null);
@@ -282,9 +311,11 @@ class DescargaTransactionRunner {
     final id = (manager.driverCedula ?? '').trim();
 
     if (id.isEmpty) {
-      await _log.logWarning('DESCARGA_DRIVER_PHOTO_SKIP', {
-        'reason': 'driverCedula empty',
-      });
+      unawaited(
+        _log.logWarning('DESCARGA_DRIVER_PHOTO_SKIP', {
+          'reason': 'driverCedula empty',
+        }),
+      );
       return;
     }
 
@@ -295,21 +326,25 @@ class DescargaTransactionRunner {
       );
 
       if (imgB64 == null || imgB64.isEmpty) {
-        await _log.logWarning('DESCARGA_DRIVER_PHOTO_EMPTY', {
-          'driverCedula': id,
-        });
+        unawaited(
+          _log.logWarning('DESCARGA_DRIVER_PHOTO_EMPTY', {
+            'driverCedula': id,
+          }),
+        );
         return;
       }
 
       manager.setDriverPhotoUrl(imgB64);
 
-      await _log.logRequest('DESCARGA_DRIVER_PHOTO_LOADED', {
-        'driverCedula': id,
-        'hasPhoto': true,
-        'length': imgB64.length,
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_DRIVER_PHOTO_LOADED', {
+          'driverCedula': id,
+          'hasPhoto': true,
+          'length': imgB64.length,
+        }),
+      );
     } catch (e, st) {
-      await _log.logError('DESCARGA_DRIVER_PHOTO_FAIL', e, st);
+      unawaited(_log.logError('DESCARGA_DRIVER_PHOTO_FAIL', e, st));
     }
   }
 
@@ -326,26 +361,30 @@ class DescargaTransactionRunner {
 
       final ocrContainerBeforeInit = _snapshotOcrContainerData(manager);
 
-      await _log.logRequest('DESCARGA_INIT_ONLY_START', {
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
-        'ocrContainerCount': manager.get('ocrContainerCount'),
-        'ocrContainerBeforeInit': ocrContainerBeforeInit,
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_INIT_ONLY_START', {
+          'placa': manager.vehiculoPlaca,
+          'contenedor': manager.contenedor,
+          'contenedor1': manager.get('contenedor1'),
+          'contenedor2': manager.get('contenedor2'),
+          'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+          'ocrContainerCount': manager.get('ocrContainerCount'),
+          'ocrContainerBeforeInit': ocrContainerBeforeInit,
+        }),
+      );
 
       final initResp = await _service.inicializar(manager, appManager);
 
       final initMap = initResp.toManagerMap();
 
-      await _log.logRequest('DESCARGA_RUNNER_INIT_FULL_RESPONSE', {
-        'errorCode': initResp.errorCode,
-        'message': initResp.message,
-        'managerMap': initMap,
-        'ocrContainerBeforeInit': ocrContainerBeforeInit,
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_RUNNER_INIT_FULL_RESPONSE', {
+          'errorCode': initResp.errorCode,
+          'message': initResp.message,
+          'managerMap': initMap,
+          'ocrContainerBeforeInit': ocrContainerBeforeInit,
+        }),
+      );
 
       if (initResp.errorCode != 0) {
         _goToErrorScreen(context, manager, initResp.message);
@@ -368,36 +407,41 @@ class DescargaTransactionRunner {
       if (taraOcr.isNotEmpty && taraOcr != '0') {
         manager.setMany({'pesoTara': taraOcr, 'taraFuente': 'OCR'});
 
-        await _log.logRequest('DESCARGA_TARA_FROM_OCR_SET', {
+        unawaited(
+          _log.logRequest('DESCARGA_TARA_FROM_OCR_SET', {
+            'contenedor': manager.contenedor,
+            'contenedor1': manager.get('contenedor1'),
+            'contenedor2': manager.get('contenedor2'),
+            'taraOcr': taraOcr,
+          }),
+        );
+      }
+
+      // 🖼️ Foto en paralelo, no bloquea el flujo.
+      unawaited(_loadDriverPhoto(appManager: appManager, manager: manager));
+
+      unawaited(
+        _log.logRequest('DESCARGA_INIT_ONLY_AFTER_INIT_MANAGER_STATE', {
+          'placa': manager.vehiculoPlaca,
           'contenedor': manager.contenedor,
           'contenedor1': manager.get('contenedor1'),
           'contenedor2': manager.get('contenedor2'),
-          'taraOcr': taraOcr,
-        });
-      }
-
-      await _loadDriverPhoto(appManager: appManager, manager: manager);
-
-      await _log.logRequest('DESCARGA_INIT_ONLY_AFTER_INIT_MANAGER_STATE', {
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
-        'ocrContainerCount': manager.get('ocrContainerCount'),
-        'pesoIngreso': manager.pesoActualBascula,
-        'pesoTara': manager.pesoTara,
-        'driverCedula': manager.driverCedula,
-        'driverName': manager.driverName,
-      });
+          'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+          'ocrContainerCount': manager.get('ocrContainerCount'),
+          'pesoIngreso': manager.pesoActualBascula,
+          'pesoTara': manager.pesoTara,
+          'driverCedula': manager.driverCedula,
+          'driverName': manager.driverName,
+        }),
+      );
 
       await _countdownAndReturnToOcr(
         context: context,
         manager: manager,
-        seconds: 20,
+        seconds: kSuccessCountdownSeconds,
       );
     } catch (e, st) {
-      _log.logError('DESCARGA_INIT_ONLY_EX', e, st);
+      unawaited(_log.logError('DESCARGA_INIT_ONLY_EX', e, st));
 
       if (!context.mounted) return;
 
@@ -493,35 +537,39 @@ class DescargaTransactionRunner {
     }
 
     if (restore.isEmpty) {
-      _log.logRequest('DESCARGA_OCR_CONTAINER_RESTORE_SKIP', {
-        'reason': 'No había datos OCR que restaurar o ya seguían presentes',
-        'before': before,
-        'current': {
-          'contenedor': manager.contenedor,
-          'contenedor1': manager.get('contenedor1'),
-          'contenedor2': manager.get('contenedor2'),
-          'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
-          'ocrContainerCount': manager.get('ocrContainerCount'),
-        },
-      });
+      unawaited(
+        _log.logRequest('DESCARGA_OCR_CONTAINER_RESTORE_SKIP', {
+          'reason': 'No había datos OCR que restaurar o ya seguían presentes',
+          'before': before,
+          'current': {
+            'contenedor': manager.contenedor,
+            'contenedor1': manager.get('contenedor1'),
+            'contenedor2': manager.get('contenedor2'),
+            'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+            'ocrContainerCount': manager.get('ocrContainerCount'),
+          },
+        }),
+      );
       return;
     }
 
     manager.setManyWithoutNotify(restore);
 
-    _log.logRequest('DESCARGA_OCR_CONTAINER_RESTORED', {
-      'restore': restore,
-      'before': before,
-      'after': {
-        'contenedor': manager.contenedor,
-        'contenedor1': manager.get('contenedor1'),
-        'contenedor2': manager.get('contenedor2'),
-        'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
-        'ocrContainerCount': manager.get('ocrContainerCount'),
-        'ocrContainer1Tare': manager.get('ocrContainer1Tare'),
-        'ocrContainer2Tare': manager.get('ocrContainer2Tare'),
-      },
-    });
+    unawaited(
+      _log.logRequest('DESCARGA_OCR_CONTAINER_RESTORED', {
+        'restore': restore,
+        'before': before,
+        'after': {
+          'contenedor': manager.contenedor,
+          'contenedor1': manager.get('contenedor1'),
+          'contenedor2': manager.get('contenedor2'),
+          'ocrContainerNumbers': manager.get('ocrContainerNumbers'),
+          'ocrContainerCount': manager.get('ocrContainerCount'),
+          'ocrContainer1Tare': manager.get('ocrContainer1Tare'),
+          'ocrContainer2Tare': manager.get('ocrContainer2Tare'),
+        },
+      }),
+    );
   }
 
   Future<void> _openGateAfterSuccess({
@@ -545,51 +593,55 @@ class DescargaTransactionRunner {
     final gate = _rfidGate(manager);
     final side = _rfidSide(manager);
 
-    await _log.logRequest('DESCARGA_GATE_OPEN_START', {
-      'url': url,
-      'urlSource': 'kioskConfig.controlGateService',
-      'gate': gate,
-      'side': side,
-      'gateSource': 'manager.rfidGate',
-      'sideSource': 'manager.side / manager.doorNumber / manager.sideGate',
-      'headerApiKeySource': 'gateConfig.apiKey',
-      'bodyApiKeySource': 'gateConfig.keyPlc',
-      'managerRfidGate': manager.get('rfidGate'),
-      'managerSide': manager.get('side'),
-      'managerDoorNumber': manager.get('doorNumber'),
-      'sideGate': manager.sideGate,
-      'kioskControlGateService': kioskCfg?.controlGateService,
-      'gateConfigApiKeyLen': headerApiKey.length,
-      'gateConfigKeyPlcLen': bodyApiKey.length,
-      'kioskGateIgnored': kioskCfg?.gate,
-      'configGateLocationIgnored': gateCfg?.gateLocation,
-      'hasUrl': url.isNotEmpty,
-      'hasHeaderApiKey': headerApiKey.isNotEmpty,
-      'hasBodyApiKey': bodyApiKey.isNotEmpty,
-      'snapshot': _snapshotDescarga(manager),
-    });
+    unawaited(
+      _log.logRequest('DESCARGA_GATE_OPEN_START', {
+        'url': url,
+        'urlSource': 'kioskConfig.controlGateService',
+        'gate': gate,
+        'side': side,
+        'gateSource': 'manager.rfidGate',
+        'sideSource': 'manager.side / manager.doorNumber / manager.sideGate',
+        'headerApiKeySource': 'gateConfig.apiKey',
+        'bodyApiKeySource': 'gateConfig.keyPlc',
+        'managerRfidGate': manager.get('rfidGate'),
+        'managerSide': manager.get('side'),
+        'managerDoorNumber': manager.get('doorNumber'),
+        'sideGate': manager.sideGate,
+        'kioskControlGateService': kioskCfg?.controlGateService,
+        'gateConfigApiKeyLen': headerApiKey.length,
+        'gateConfigKeyPlcLen': bodyApiKey.length,
+        'kioskGateIgnored': kioskCfg?.gate,
+        'configGateLocationIgnored': gateCfg?.gateLocation,
+        'hasUrl': url.isNotEmpty,
+        'hasHeaderApiKey': headerApiKey.isNotEmpty,
+        'hasBodyApiKey': bodyApiKey.isNotEmpty,
+        'snapshot': _snapshotDescarga(manager),
+      }),
+    );
 
     if (url.isEmpty ||
         headerApiKey.isEmpty ||
         bodyApiKey.isEmpty ||
         gate <= 0 ||
         side <= 0) {
-      await _log.logWarning('DESCARGA_GATE_OPEN_SKIPPED', {
-        'reason': 'Configuración incompleta para abrir barrera',
-        'urlEmpty': url.isEmpty,
-        'headerApiKeyEmpty': headerApiKey.isEmpty,
-        'bodyApiKeyEmpty': bodyApiKey.isEmpty,
-        'gate': gate,
-        'side': side,
-        'kioskControlGateService': kioskCfg?.controlGateService,
-        'gateConfigApiKeyLen': headerApiKey.length,
-        'gateConfigKeyPlcLen': bodyApiKey.length,
-        'managerRfidGate': manager.get('rfidGate'),
-        'managerSide': manager.get('side'),
-        'managerDoorNumber': manager.get('doorNumber'),
-        'sideGate': manager.sideGate,
-        'snapshot': _snapshotDescarga(manager),
-      });
+      unawaited(
+        _log.logWarning('DESCARGA_GATE_OPEN_SKIPPED', {
+          'reason': 'Configuración incompleta para abrir barrera',
+          'urlEmpty': url.isEmpty,
+          'headerApiKeyEmpty': headerApiKey.isEmpty,
+          'bodyApiKeyEmpty': bodyApiKey.isEmpty,
+          'gate': gate,
+          'side': side,
+          'kioskControlGateService': kioskCfg?.controlGateService,
+          'gateConfigApiKeyLen': headerApiKey.length,
+          'gateConfigKeyPlcLen': bodyApiKey.length,
+          'managerRfidGate': manager.get('rfidGate'),
+          'managerSide': manager.get('side'),
+          'managerDoorNumber': manager.get('doorNumber'),
+          'sideGate': manager.sideGate,
+          'snapshot': _snapshotDescarga(manager),
+        }),
+      );
 
       manager.setManyWithoutNotify({
         'descargaGateOpenRequested': true,
@@ -619,17 +671,19 @@ class DescargaTransactionRunner {
       'descargaGateOpenSide': side,
     });
 
-    await _log.logRequest('DESCARGA_GATE_OPEN_RESULT', {
-      'opened': opened,
-      'url': url,
-      'urlSource': 'kioskConfig.controlGateService',
-      'gate': gate,
-      'side': side,
-      'gateLocation': gate.toString(),
-      'headerApiKeySource': 'gateConfig.apiKey',
-      'bodyApiKeySource': 'gateConfig.keyPlc',
-      'snapshot': _snapshotDescarga(manager),
-    });
+    unawaited(
+      _log.logRequest('DESCARGA_GATE_OPEN_RESULT', {
+        'opened': opened,
+        'url': url,
+        'urlSource': 'kioskConfig.controlGateService',
+        'gate': gate,
+        'side': side,
+        'gateLocation': gate.toString(),
+        'headerApiKeySource': 'gateConfig.apiKey',
+        'bodyApiKeySource': 'gateConfig.keyPlc',
+        'snapshot': _snapshotDescarga(manager),
+      }),
+    );
 
     if (!opened) {
       throw Exception('No se pudo abrir la barrera.');
