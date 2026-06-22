@@ -1,5 +1,6 @@
 // lib/screens/muelle/expDoble_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:tpg_attack_kiosko_muelle/config/incoming/exp_incoming_visibility_config.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/auth/ocrScanner_screen.dart';
@@ -34,30 +35,46 @@ class _ExpDobleScreenBody extends StatefulWidget {
 
 class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
     with TickerProviderStateMixin {
+  late final ExpDobleTransactionRunner _runner;
   bool _runnerStarted = false;
+
+  AppStateManager? _appManager;
+  AtkTransactionManager? _manager;
 
   @override
   void initState() {
     super.initState();
+    _runner = ExpDobleTransactionRunner();
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final appState = context.read<AppStateManager>();
-      final txn = context.read<AtkTransactionManager>();
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
 
-      txn.setManyWithoutNotify({
-        'isLoading': true,
-        'expDobleScreenReady': true,
-        'mensajeInferior':
-            'Transacción de salida confirmada.\nProcesando doble exportación...',
+    if (_runnerStarted) return;
+
+    _runnerStarted = true;
+
+    _appManager = context.read<AppStateManager>();
+    _manager = context.read<AtkTransactionManager>();
+
+    _manager!.setMany({
+      'isLoading': true,
+      'expDobleScreenReady': true,
+      'mensajeInferior':
+          'Transacción de salida confirmada.\nProcesando doble exportación...',
+    });
+
+    _cargarFotoConductor(_appManager!, _manager!);
+
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      Future.microtask(() {
+        if (!mounted) return;
+
+        _lanzarRunner(_appManager!, _manager!);
       });
-
-      if (mounted) setState(() {});
-
-      // Cargar foto del conductor (no bloquea el flujo).
-      _cargarFotoConductor(appState, txn);
-
-      // Lanzar el flujo doble completo una sola vez.
-      await _lanzarRunner(appState, txn);
     });
   }
 
@@ -87,32 +104,32 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
     AppStateManager appState,
     AtkTransactionManager txn,
   ) async {
-    if (_runnerStarted) return;
-    _runnerStarted = true;
-
-    final runner = ExpDobleTransactionRunner();
-
-    await runner.run(
+    await _runner.run(
       context: context,
       appManager: appState,
       manager: txn,
       onFinished: () async {
         if (!mounted) return;
 
-        // 1) Estado final estable (NO reseteamos todavía: resetear aquí
-        //    repinta esta pantalla con datos vacíos y causa el salto brusco).
         txn.setMany({
           'isLoading': true,
           'mensajeInferior':
               'Doble exportación completada.\nRegresando al escáner...',
         });
 
-        // 2) Pequeña pausa para que la pantalla final se perciba, no un corte seco.
         await Future.delayed(const Duration(milliseconds: 700));
         if (!mounted) return;
 
-        // 3) Navegar con transición suave (fade largo y con curva).
-        await Navigator.of(context).pushAndRemoveUntil(
+        txn.setManyWithoutNotify({
+          'isLoading': false,
+          'hasError': false,
+          'errorMessage': null,
+          'transaccionActiva': false,
+          'mensajeInferior': null,
+          'flowRemainingSeconds': null,
+        });
+
+        Navigator.of(context).pushAndRemoveUntil(
           PageRouteBuilder(
             pageBuilder: (_, __, ___) => const OcrScannerScreen(),
             transitionDuration: const Duration(milliseconds: 450),
@@ -127,12 +144,6 @@ class _ExpDobleScreenBodyState extends State<_ExpDobleScreenBody>
           ),
           (route) => false,
         );
-
-        // 4) Reset DESPUÉS de navegar: la pantalla vieja ya no es visible,
-        //    así que el repintado por notifyListeners no se nota.
-        //    OcrScannerScreen.initState ya hace resetOcr/resetDriver, pero
-        //    dejamos el manager limpio para el siguiente ciclo.
-        txn.resetAll();
       },
     );
   }

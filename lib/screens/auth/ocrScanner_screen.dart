@@ -98,10 +98,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
   String _routeTransactionName = '';
   String _routeTargetScreen = '';
 
-  // ---------------------------------------------------------------------------
-  // LIFECYCLE
-  // ---------------------------------------------------------------------------
-
   @override
   void initState() {
     super.initState();
@@ -113,25 +109,17 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       _appManager = context.read<AppStateManager>();
       _manager = context.read<AtkTransactionManager>();
 
-      _manager?.resetOcr();
-      _manager?.resetDriver();
-      _manager?.clearError();
-      _manager?.setTransaccionActiva(false);
+      _resetLocalScannerState();
 
-      _ocrDetected = false;
-      _weightDetected = false;
-      _weightStable = false;
-      _validating = false;
-      _navigating = false;
-      _consultandoConductor = false;
-      _navigated = false;
-      _lastWeight = 0;
-      _facialStarted = false;
-      _ocrStatusUpdateSent = false;
-
-      _manager?.setManyWithoutNotify({
+      _manager?.resetAllWithDefaults({
+        'isLoading': false,
+        'hasError': false,
+        'errorMessage': null,
+        'transaccionActiva': false,
         'ocrFacialStarted': false,
         'ocrFacialOk': false,
+        'mensajeInferior': null,
+        'flowRemainingSeconds': null,
       });
 
       await LogService.instance.logRequest('OCR_SCREEN_ENTER_RESET', {
@@ -140,6 +128,32 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       await _initAllServices();
     });
+  }
+
+  void _resetLocalScannerState() {
+    _ocrDetected = false;
+    _weightDetected = false;
+    _weightStable = false;
+    _facialStarted = false;
+
+    _lastWeight = 0;
+    _ultimoSideDetectado = null;
+    _placaSesion = null;
+
+    _lastProcessedEventKey = null;
+    _lastProcessedAt = null;
+
+    _validating = false;
+    _navigating = false;
+    _consultandoConductor = false;
+    _consultandoTransaccionPlaca = false;
+    _navigated = false;
+
+    _ocrStatusUpdateSent = false;
+
+    _routeTransactionCode = '';
+    _routeTransactionName = '';
+    _routeTargetScreen = '';
   }
 
   @override
@@ -1815,7 +1829,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         'muelleTransactionCode': routeTransactionType,
         'ocrRouteDestination': routeDestination,
         'contenedor1': contenedor,
-        // ❌ NO sobrescribir vehiculoTipoCarga aquí; ya viene del DISV arriba.
       });
 
       await LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_OK', {
