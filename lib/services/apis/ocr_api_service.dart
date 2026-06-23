@@ -1,11 +1,8 @@
 import 'dart:convert';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
-import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
-import 'package:tpg_attack_kiosko_muelle/services/apis/authApi_service.dart';
+import 'package:tpg_attack_kiosko_muelle/services/apis/ocr_client_auth_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/logger/log_service.dart';
-import 'package:tpg_attack_kiosko_muelle/services/secure_storage_service.dart';
 
 class OcrApiServiceException implements Exception {
   final String message;
@@ -19,53 +16,30 @@ class OcrApiServiceException implements Exception {
 class OcrApiService {
   final _log = LogService.instance;
 
-  static Map<String, String>? _cachedHeaders;
-  static DateTime? _headersCacheTime;
-  static const _headersCacheDuration = Duration(minutes: 4);
-
-  Future<Map<String, String>> _authHeaders() async {
-    if (_cachedHeaders != null &&
-        _headersCacheTime != null &&
-        DateTime.now().difference(_headersCacheTime!) < _headersCacheDuration) {
-      return _cachedHeaders!;
-    }
+  Future<Map<String, String>> _authHeaders({bool forceRefresh = false}) async {
+    final token = await OcrClientAuthService.instance.getAccessToken(
+      forceRefresh: forceRefresh,
+    );
 
     final headers = <String, String>{
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     };
 
-    final appState = AppStateManager.instance;
-    var token = appState.accessToken;
-
-    if (token == null || token.isEmpty) {
-      final storageToken = await SecureStorageService.getToken();
-
-      if (storageToken != null && storageToken.isNotEmpty) {
-        final storageRefreshToken =
-            await SecureStorageService.getRefreshToken();
-
-        appState.setTokens(storageToken, storageRefreshToken ?? '');
-        token = storageToken;
-      }
-    }
-
     if (token != null && token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
     }
 
-    _cachedHeaders = headers;
-    _headersCacheTime = DateTime.now();
+    await _log.logRequest('OCR_API_AUTH_HEADERS', {
+      'hasToken': token != null && token.isNotEmpty,
+      'tokenSource': 'OCR_CLIENT_ID',
+      'forceRefresh': forceRefresh,
+    });
 
     return headers;
   }
 
-  static void invalidateHeadersCache() {
-    _cachedHeaders = null;
-    _headersCacheTime = null;
-  }
-
-  Future<http.Response> _postWithAutoRefresh(
+  Future<http.Response> _postWithOcrClientToken(
     Uri uri, {
     required String body,
     required String tag,
@@ -77,17 +51,22 @@ class OcrApiService {
         .timeout(const Duration(seconds: 30));
 
     if (res.statusCode == 401 || res.statusCode == 403) {
-      invalidateHeadersCache();
+      final firstRaw = utf8.decode(res.bodyBytes);
 
-      final appState = AppStateManager.instance;
-      final refreshed = await AuthApiService.refresh(appState);
+      await _log.logRequest('${tag}_AUTH_FAIL_RETRY_WITH_OCR_CLIENT', {
+        'firstStatusCode': res.statusCode,
+        'firstBody': firstRaw,
+        'tokenSource': 'OCR_CLIENT_ID',
+        'reason': 'Se renueva token técnico OCR y se reintenta una sola vez',
+      });
 
-      if (refreshed) {
-        headers = await _authHeaders();
-        res = await http
-            .post(uri, headers: headers, body: body)
-            .timeout(const Duration(seconds: 30));
-      }
+      OcrClientAuthService.instance.clearCache();
+
+      headers = await _authHeaders(forceRefresh: true);
+
+      res = await http
+          .post(uri, headers: headers, body: body)
+          .timeout(const Duration(seconds: 30));
     }
 
     return res;
@@ -112,10 +91,7 @@ class OcrApiService {
     final resolvedBaseUrl = _resolveOcrBaseUrl(baseUrl);
     final uri = Uri.parse('${resolvedBaseUrl}api/ocr/update-status');
 
-    final body = {
-      'uuid': cleanUuid,
-      'status': cleanStatus,
-    };
+    final body = {'uuid': cleanUuid, 'status': cleanStatus};
 
     final bodyJson = jsonEncode(body);
 
@@ -123,9 +99,10 @@ class OcrApiService {
       'url': uri.toString(),
       'method': 'POST',
       'body': body,
+      'tokenSource': 'OCR_CLIENT_ID',
     });
 
-    final resp = await _postWithAutoRefresh(
+    final resp = await _postWithOcrClientToken(
       uri,
       body: bodyJson,
       tag: 'OCR_UPDATE_STATUS',
@@ -136,6 +113,7 @@ class OcrApiService {
     await _log.logRequest('OCR_UPDATE_STATUS_HTTP_RESPONSE', {
       'statusCode': resp.statusCode,
       'rawBody': rawBody,
+      'tokenSource': 'OCR_CLIENT_ID',
     });
 
     if (resp.statusCode != 200 && resp.statusCode != 201) {
@@ -156,14 +134,11 @@ class OcrApiService {
   }
 
   String _resolveOcrBaseUrl(String? baseUrl) {
-    final configured =
-        baseUrl?.trim().isNotEmpty == true
-            ? baseUrl!.trim()
-            : (dotenv.env['OCR_BASE_URL'] ?? '').trim();
+    final configured = (baseUrl ?? '').trim();
 
     if (configured.isEmpty) {
       throw OcrApiServiceException(
-        'No existe URL OCR. Configure kioskConfig.ocrService u OCR_BASE_URL',
+        'No existe URL OCR. Configure kioskConfig.ocrService',
       );
     }
 

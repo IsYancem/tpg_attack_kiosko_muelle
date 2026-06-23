@@ -75,7 +75,7 @@ class TrlTransactionRunner {
       patioStr: kioskConfig.patio,
       atkId: atkId,
       now: now,
-      usuario: KioskUserEnv.usuario,
+      usuario: appManager.requestUsername,
       kioskServer: kioskServer,
       kioskPort: kioskPort,
     );

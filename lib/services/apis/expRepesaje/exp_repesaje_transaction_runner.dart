@@ -1,20 +1,3 @@
-// lib/services/apis/expRepesaje/exp_repesaje_transaction_runner.dart
-// Autor: Abraham Yance
-//
-// Runner dedicado al flujo EXP REPESAJE optimizado.
-// Secuencia rápida:
-//   PASO 1 → inicializar
-//   PASO 2 → validar contenedor local OCR vs DISV
-//   PASO 3 → guardar
-//   PASO 4 → terminar
-//   PASO 5 → abrir barrera
-//   PASO 6 → volver a OCR
-//
-// Cambio importante:
-//   Se elimina el HTTP extra de validar-contenedor.
-//   El backend vuelve a validar DISV dentro de guardar, por eso aquí solo se
-//   conserva una validación local rápida OCR vs DISV.
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -51,6 +34,7 @@ class ExpRespesajeTransactionRunner {
         'placa': placa,
         'driverCedula': manager.driverCedula,
         'contenedorOcr': contenedorOcr,
+        'contenedorOcrPresente': contenedorOcr.isNotEmpty,
         'solicitudId': manager.expoRepesajeSolicitudId,
         'solicitudEstado': manager.expoRepesajeSolicitudEstado,
         'solicitudNuevoDisv': manager.expoRepesajeSolicitudNuevoDisv,
@@ -61,10 +45,17 @@ class ExpRespesajeTransactionRunner {
     );
 
     try {
+      // ⚠️ Antes aquí se lanzaba excepción si contenedorOcr estaba vacío.
+      // Ahora el OCR es OPCIONAL: el contenedor puede resolverse desde el DISV
+      // que devuelve inicializar(). Solo se registra el estado.
       if (contenedorOcr.isEmpty) {
-        throw ExpMuelleRepesajeServiceException(
-          'No se encontró contenedor OCR para procesar el repesaje.',
-          step: 'VALIDACION_PREVIA',
+        _logBg(
+          _log.logRequest('EXP_REPESAJE_RUNNER_SIN_CONTENEDOR_OCR', {
+            'placa': placa,
+            'nota':
+                'OCR no entregó contenedor. Se intentará resolver por DISV en inicializar().',
+          }),
+          'EXP_REPESAJE_RUNNER_SIN_CONTENEDOR_OCR_LOG_ERROR',
         );
       }
 
@@ -82,7 +73,7 @@ class ExpRespesajeTransactionRunner {
       _logBg(
         _log.logRequest('EXP_REPESAJE_RUNNER_PASO1_START', {
           'placa': placa,
-          'contenedor': contenedorOcr,
+          'contenedorOcr': contenedorOcr,
         }),
         'EXP_REPESAJE_RUNNER_PASO1_START_LOG_ERROR',
       );
@@ -106,23 +97,63 @@ class ExpRespesajeTransactionRunner {
       if (!context.mounted) return;
 
       // ══════════════════════════════════════════════════════════════════════
-      // PASO 2: VALIDACIÓN LOCAL OCR VS DISV
+      // RESOLVER CONTENEDOR DE TRABAJO (OCR opcional)
+      // OCR si vino; si no, el del DISV devuelto por inicializar().
+      // ══════════════════════════════════════════════════════════════════════
+      final contenedorDisv = (inicializarRes.data?.contenedor ?? '')
+          .trim()
+          .toUpperCase();
+
+      final contenedorTrabajo = contenedorOcr.isNotEmpty
+          ? contenedorOcr
+          : contenedorDisv;
+
+      if (contenedorTrabajo.isEmpty) {
+        throw ExpMuelleRepesajeServiceException(
+          'No se encontró contenedor para el repesaje (ni por OCR ni por DISV).',
+          step: 'RESOLVER_CONTENEDOR',
+        );
+      }
+
+      // Si el OCR no dio contenedor, se adopta el del DISV para que guardar()
+      // y terminar() (que leen de manager) lo tengan disponible.
+      if (contenedorOcr.isEmpty) {
+        manager.setManyWithoutNotify({
+          'contenedor1': contenedorTrabajo,
+          'contenedorExp': contenedorTrabajo,
+          'expRepesajeContenedorDesdeDisv': true,
+        });
+
+        _logBg(
+          _log.logRequest('EXP_REPESAJE_RUNNER_CONTENEDOR_ADOPTADO_DISV', {
+            'contenedorDisv': contenedorDisv,
+            'contenedorTrabajo': contenedorTrabajo,
+          }),
+          'EXP_REPESAJE_RUNNER_CONTENEDOR_ADOPTADO_DISV_LOG_ERROR',
+        );
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // PASO 2: VALIDACIÓN LOCAL OCR VS DISV (solo si el OCR trajo contenedor)
       // ══════════════════════════════════════════════════════════════════════
       _validarContenedorLocalOrFail(
         contenedorOcr: contenedorOcr,
-        contenedorDisv: inicializarRes.data?.contenedor,
+        contenedorDisv: contenedorDisv,
       );
 
       manager.setManyWithoutNotify({
-        'expMuelleContenedorValidado': contenedorOcr,
+        'expMuelleContenedorValidado': contenedorTrabajo,
         'expMuelleValidarContenedorOk': true,
       });
 
       _logBg(
         _log.logRequest('EXP_REPESAJE_RUNNER_PASO2_LOCAL_OK', {
           'contenedorOcr': contenedorOcr,
-          'contenedorDisv': inicializarRes.data?.contenedor,
-          'nota': 'Se omite HTTP validar-contenedor; guardar valida en backend.',
+          'contenedorDisv': contenedorDisv,
+          'contenedorTrabajo': contenedorTrabajo,
+          'ocrOpcional': contenedorOcr.isEmpty,
+          'nota':
+              'OCR opcional. Se omite HTTP validar-contenedor; guardar valida en backend.',
         }),
         'EXP_REPESAJE_RUNNER_PASO2_LOCAL_OK_LOG_ERROR',
       );
@@ -139,7 +170,7 @@ class ExpRespesajeTransactionRunner {
 
       _logBg(
         _log.logRequest('EXP_REPESAJE_RUNNER_PASO3_START', {
-          'contenedor': contenedorOcr,
+          'contenedor': contenedorTrabajo,
           'pesoIngreso': manager.pesoActualBascula,
           'tara': manager.pesoTara,
           'atkId': manager.atkId,
@@ -217,7 +248,7 @@ class ExpRespesajeTransactionRunner {
         _log.logRequest('EXP_REPESAJE_RUNNER_DONE', {
           'elapsedMs': sw.elapsedMilliseconds,
           'placa': placa,
-          'contenedor': contenedorOcr,
+          'contenedor': contenedorTrabajo,
           'numtrans': inicializarRes.data?.numtrans,
           'estadoFinal': estadoFinal,
         }),
@@ -306,13 +337,13 @@ class ExpRespesajeTransactionRunner {
     final ocr = contenedorOcr.trim().toUpperCase();
     final disv = (contenedorDisv ?? '').trim().toUpperCase();
 
+    // OCR OPCIONAL: si no vino contenedor por OCR, no hay nada que comparar.
+    // El flujo continúa con el contenedor del DISV.
     if (ocr.isEmpty) {
-      throw ExpMuelleRepesajeServiceException(
-        'No se encontró contenedor OCR para procesar el repesaje.',
-        step: 'VALIDAR_CONTENEDOR_LOCAL',
-      );
+      return;
     }
 
+    // Si hay OCR y DISV, deben coincidir.
     if (disv.isNotEmpty && ocr != disv) {
       throw ExpMuelleRepesajeServiceException(
         'El contenedor leído por OCR ($ocr) no coincide con el contenedor del DISV ($disv).',

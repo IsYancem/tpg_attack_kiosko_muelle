@@ -20,6 +20,8 @@ class PscTransactionRunner {
     : _api = api ?? const PscApiService(),
       _staapisacApi = staapisacApi ?? StaapisacApiService();
 
+  final appState = AppStateManager.instance;
+
   final PscApiService _api;
   final StaapisacApiService _staapisacApi;
 
@@ -27,7 +29,7 @@ class PscTransactionRunner {
 
   bool _running = false;
 
-  String _usuario() => KioskUserEnv.usuario;
+  String _usuario() => appState.requestUsername;
 
   Future<void> run({
     required BuildContext context,
@@ -961,16 +963,33 @@ class PscTransactionRunner {
         unawaited(
           LogService.instance.logRequest('PSC_STAAPISAC_LOGIN_START', {
             'reason': 'No hay token STAAPISAC antes de consultar foto',
+            'hasSavedCredentials': appManager.hasStaapisacCredentials,
           }),
         );
 
-        await _staapisacApi.loginStaapisac(appState: appManager);
+        final loginOk = await _staapisacApi.loginStaapisacFromSavedCredentials(
+          appState: appManager,
+        );
 
         unawaited(
-          LogService.instance.logRequest('PSC_STAAPISAC_LOGIN_OK', {
+          LogService.instance.logRequest('PSC_STAAPISAC_LOGIN_RESULT', {
+            'loginOk': loginOk,
             'hasStaapisacAuth': appManager.hasStaapisacAuth,
           }),
         );
+
+        if (!loginOk) {
+          manager.setMany({
+            'driverPhotoUrl': null,
+            'driverAlerta':
+                'No se pudo autenticar STAAPISAC para consultar foto.',
+            'pscDriverPhotoLoaded': false,
+            'pscDriverPhotoId': photoId,
+            'pscDriverPhotoMessage': 'STAAPISAC login fallido',
+          });
+
+          return;
+        }
       }
 
       final imgB64 = await _staapisacApi.getFotoChoferBase64(

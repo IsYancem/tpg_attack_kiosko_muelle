@@ -1,9 +1,3 @@
-// lib/screens/exp_incoming/exp_incoming_screen.dart
-// Autor: Abraham Yance
-// Fecha: 2025-12-10
-// OPTIMIZADO - Con runner de transacción EXP completo
-// FIX: Ejecutar runner solo UNA VEZ desde initState
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tpg_attack_kiosko_muelle/config/incoming/exp_incoming_visibility_config.dart';

@@ -14,8 +14,6 @@ class StaapisacApiService {
   static const _fotosPath = 'api/zk/fotos';
 
   String _baseUrl() => (dotenv.env['STAAPISAC'] ?? '').trim();
-  String _username() => (dotenv.env['USERNAME_STAAPISAC'] ?? '').trim();
-  String _password() => (dotenv.env['PASSWORD_STAAPISAC'] ?? '').trim();
   String _computerNameFallback() =>
       (dotenv.env['COMPUTERNAME_STAAPISAC'] ?? 'computer_disv').trim();
 
@@ -98,64 +96,169 @@ class StaapisacApiService {
     throw _HttpFail(res.statusCode, raw);
   }
 
-  // ---------------------------
-  // 1) LOGIN (llámalo en main)
-  // ---------------------------
   Future<StaapisacAuthResponse> loginStaapisac({
     required AppStateManager appState,
+    required String username,
+    required String password,
     Duration timeout = const Duration(seconds: 20),
   }) async {
     final uri = _uri(_loginPath);
-    final payload = {'username': _username(), 'password': _password()};
+
+    final rawUsername = username.trim();
+    final cleanUsername = _normalizeStaapisacUsername(rawUsername);
+    final cleanPassword = password.trim();
+
+    if (cleanUsername.isEmpty) {
+      throw Exception('STAAPISAC: username vacío');
+    }
+
+    if (cleanPassword.isEmpty) {
+      throw Exception('STAAPISAC: password vacío');
+    }
+
+    final payload = <String, dynamic>{
+      'username': cleanUsername,
+      'password': cleanPassword,
+    };
 
     final start = DateTime.now();
     const service = 'staapisac_login';
 
-    LogService.instance.logSpExec(
+    await LogService.instance.logSpExec(
       service: service,
       path: uri.toString(),
       method: 'POST',
-      payload: payload,
-      context: {'target': 'STAAPISAC'},
-    );
-
-    final j = await _postJsonObject(
-      uri: uri,
-      body: payload,
-      headers: _jsonHeaders(),
-      timeout: timeout,
-    );
-
-    final ms = DateTime.now().difference(start).inMilliseconds;
-    final auth = StaapisacAuthResponse.fromJson(j);
-
-    final computerName = (auth.computerName?.trim().isNotEmpty == true)
-        ? auth.computerName!.trim()
-        : _computerNameFallback();
-
-    appState.setStaapisacAuth(
-      id: auth.id ?? '',
-      username: auth.username ?? _username(),
-      computerName: computerName,
-      accessToken: auth.accessToken ?? '',
-      refreshToken: auth.refreshToken ?? '',
-    );
-
-    LogService.instance.logSpResult(
-      service: service,
-      path: uri.toString(),
-      errorCode: 0,
-      message: 'OK',
-      latencyMs: ms,
-      data: {
-        'ok': true,
-        'user': appState.staapisacUsername,
-        'hasAccess': appState.staapisacAccessToken.isNotEmpty,
-        'hasRefresh': appState.staapisacRefreshToken.isNotEmpty,
+      payload: {
+        'rawUsername': rawUsername,
+        'username': cleanUsername,
+        'password': '***',
       },
+      context: {'target': 'STAAPISAC', 'source': 'login_screen'},
     );
 
-    return auth;
+    try {
+      final j = await _postJsonObject(
+        uri: uri,
+        body: payload,
+        headers: _jsonHeaders(),
+        timeout: timeout,
+      );
+
+      LogService.instance.logRequest('STAAPISAC_LOGIN_RAW_RESPONSE', {
+        'raw': j,
+        'keys': j.keys.toList(),
+        'hasAccessToken': j.containsKey('accessToken'),
+        'hasAccess_token': j.containsKey('access_token'),
+        'hasToken': j.containsKey('token'),
+        'hasData': j.containsKey('data'),
+      });
+
+      final ms = DateTime.now().difference(start).inMilliseconds;
+      final auth = StaapisacAuthResponse.fromJson(j);
+
+      final computerName = (auth.computerName?.trim().isNotEmpty == true)
+          ? auth.computerName!.trim()
+          : _computerNameFallback();
+
+      appState.setStaapisacAuth(
+        id: auth.id ?? '',
+        username: auth.username ?? cleanUsername,
+        computerName: computerName,
+        accessToken: auth.accessToken ?? '',
+        refreshToken: auth.refreshToken ?? '',
+      );
+
+      await LogService.instance.logSpResult(
+        service: service,
+        path: uri.toString(),
+        errorCode: 0,
+        message: 'OK',
+        latencyMs: ms,
+        data: {
+          'ok': true,
+          'rawUsername': rawUsername,
+          'usernameSent': cleanUsername,
+          'user': appState.staapisacUsername,
+          'hasAccess': appState.staapisacAccessToken.isNotEmpty,
+          'hasRefresh': appState.staapisacRefreshToken.isNotEmpty,
+        },
+      );
+
+      return auth;
+    } catch (e, st) {
+      final ms = DateTime.now().difference(start).inMilliseconds;
+
+      await LogService.instance.logSpResult(
+        service: service,
+        path: uri.toString(),
+        errorCode: -1,
+        message: 'EXCEPTION',
+        latencyMs: ms,
+        data: {
+          'rawUsername': rawUsername,
+          'usernameSent': cleanUsername,
+          'password': '***',
+          'error': e.toString(),
+        },
+      );
+
+      await LogService.instance.logError('STAAPISAC_LOGIN_EXCEPTION', e, st);
+      rethrow;
+    }
+  }
+
+  String _normalizeStaapisacUsername(String value) {
+    final input = value.trim();
+
+    if (input.isEmpty) return '';
+
+    final atIndex = input.indexOf('@');
+
+    if (atIndex > 0) {
+      return input.substring(0, atIndex).trim();
+    }
+
+    return input;
+  }
+
+  Future<bool> loginStaapisacFromSavedCredentials({
+    required AppStateManager appState,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final username = _normalizeStaapisacUsername(
+      appState.staapisacLoginUsername,
+    );
+    final password = appState.staapisacLoginPassword;
+
+    if (username.isEmpty || password.isEmpty) {
+      LogService.instance.logWarning('STAAPISAC_LOGIN_SAVED_SKIPPED', {
+        'reason': 'No hay credenciales guardadas en AppStateManager',
+        'hasUsername': username.isNotEmpty,
+        'hasPassword': password.isNotEmpty,
+      });
+
+      return false;
+    }
+
+    try {
+      await loginStaapisac(
+        appState: appState,
+        username: username,
+        password: password,
+        timeout: timeout,
+      );
+
+      LogService.instance.logRequest('STAAPISAC_LOGIN_SAVED_OK', {
+        'username': username,
+        'hasAccessToken': appState.staapisacAccessToken.isNotEmpty,
+        'hasRefreshToken': appState.staapisacRefreshToken.isNotEmpty,
+      });
+
+      return true;
+    } catch (e, st) {
+      LogService.instance.logError('STAAPISAC_LOGIN_SAVED_FAIL', e, st);
+      return false;
+    }
   }
 
   // -----------------------------------
@@ -247,7 +350,20 @@ class StaapisacApiService {
     Duration timeout = const Duration(seconds: 25),
   }) async {
     if (appState.staapisacAccessToken.isEmpty) {
-      throw Exception('No hay accessToken STAAPISAC. Ejecuta login primero.');
+      LogService.instance.logWarning('STAAPISAC_FOTOS_NO_TOKEN_LOGIN', {
+        'id': id.trim(),
+        'hasSavedCredentials': appState.hasStaapisacCredentials,
+      });
+
+      final loginOk = await loginStaapisacFromSavedCredentials(
+        appState: appState,
+      );
+
+      if (!loginOk) {
+        throw Exception(
+          'No hay accessToken STAAPISAC y no se pudo iniciar sesión nuevamente.',
+        );
+      }
     }
 
     final uri = _uri(_fotosPath);
@@ -328,20 +444,30 @@ class StaapisacApiService {
           e.toString().toLowerCase().contains('unauthorized');
 
       if (is401) {
-        LogService.instance.logWarning(
-          'STAAPISAC_FOTOS_401_REFRESH_RETRY',
-          {'id': id.trim(), 'error': e.toString()},
+        LogService.instance
+            .logWarning('STAAPISAC_FOTOS_AUTH_FAIL_LOGIN_RETRY', {
+              'id': id.trim(),
+              'error': e.toString(),
+              'hasSavedCredentials': appState.hasStaapisacCredentials,
+            });
+
+        final loginOk = await loginStaapisacFromSavedCredentials(
+          appState: appState,
         );
 
+        if (!loginOk) {
+          LogService.instance.logWarning('STAAPISAC_FOTOS_RETRY_SKIPPED', {
+            'reason': 'No se pudo renovar sesión con login guardado',
+            'id': id.trim(),
+          });
+
+          rethrow;
+        }
+
         try {
-          await refreshStaapisac(appState: appState);
           return await callOnce();
         } catch (e2, st2) {
-          LogService.instance.logError(
-            'STAAPISAC_FOTOS_RETRY_FAIL',
-            e2,
-            st2,
-          );
+          LogService.instance.logError('STAAPISAC_FOTOS_RETRY_FAIL', e2, st2);
           rethrow;
         }
       }

@@ -512,7 +512,7 @@ class ExmService {
       // ═══════════════════════════════════════════════════════
       // 🔹 USUARIO Y AUDITORÍA
       // ═══════════════════════════════════════════════════════
-      'usuario_nombre': KioskUserEnv.usuario,
+      'usuario_nombre': appManager.requestUsername,
     };
   }
 
@@ -554,7 +554,7 @@ class ExmService {
       'numPlaca': manager.vehiculoPlaca ?? '',
       'TIPOMOV': 'EXM',
       'vehicle_access_id': int.tryParse(manager.atkId ?? '0') ?? 0,
-      'bodegueroUser': KioskUserEnv.usuario,
+      'bodegueroUser': appManager.requestUsername,
       'ruc': manager.driverCedula ?? '',
       'contenedor': manager.contenedor1 ?? manager.contenedorExp ?? '',
       'booking': manager.bookingExp ?? '',
@@ -745,7 +745,7 @@ class ExmService {
       'num_trans': int.tryParse(manager.numTrans ?? '0') ?? 0,
       'numPlaca': manager.vehiculoPlaca ?? '',
       'garita_letra': appManager.kioskConfig?.gateLetter ?? 'A',
-      'usuario_nombre': KioskUserEnv.usuario,
+      'usuario_nombre': appManager.requestUsername,
       'mensaje_error': manager.errorMessage ?? '',
       'email_jefe': null,
       'ip': appManager.kioskConfig?.kioskServer ?? '',

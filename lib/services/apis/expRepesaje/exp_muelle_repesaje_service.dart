@@ -252,8 +252,8 @@ class ExpMuelleRepesajeService {
       refrigeradoDisv: manager.vehiculoRefrigerado,
       pesoCenso: manager.pesoActualBascula.toInt(),
       fotoConductor: manager.driverPhotoUrl,
-      usuarioNombre: KioskUserEnv.usuario,
-      emailJefe: KioskUserEnv.usuario,
+      usuarioNombre: appManager.requestUsername,
+      emailJefe: appManager.requestUsername,
       ip: kiosk?.kioskServer,
     );
 
@@ -665,14 +665,14 @@ class ExpMuelleRepesajeService {
       cargaIMO: manager.vehiculoCargaImo,
       garitaLetra: kiosk?.gateLetter,
       garitaNumero: int.tryParse(kiosk?.gate ?? '1'),
-      usuarioNombre: KioskUserEnv.usuario,
-      emailJefe: KioskUserEnv.usuario,
+      usuarioNombre: appManager.requestUsername,
+      emailJefe: appManager.requestUsername,
       ip: kiosk?.kioskServer,
       tpg: int.tryParse((kiosk?.patio ?? '1').replaceAll('TPG', '')),
       doorNumber: _int(manager.get('doorNumber')) ?? 1,
       tipoMov: 'EXP',
       fechaBarrera: now,
-      bodegueroUser: KioskUserEnv.usuario,
+      bodegueroUser: appManager.requestUsername,
     );
 
     final raw = await _post(

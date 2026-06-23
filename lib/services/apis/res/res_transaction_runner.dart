@@ -322,8 +322,8 @@ class ResTransactionRunner {
       ..tpg = null
       ..ruc = _safeStr(manager.get('driverCedula'))
       ..nombres = _safeStr(manager.get('driverName'))
-      ..usuarioNombre = KioskUserEnv.usuario
-      ..emailJefe = KioskUserEnv.usuario
+      ..usuarioNombre = appManager.requestUsername
+      ..emailJefe = appManager.requestUsername
       ..pesoIng = pesoIng
       ..pesoSal = pesoSal
       ..observacion = observacion
@@ -390,7 +390,7 @@ class ResTransactionRunner {
       ..pesoIng = pesoIng
       ..pesoSal = pesoSal
       ..vehicleAccessId = _toInt(manager.get('atkId'))
-      ..usuarioNombre = KioskUserEnv.usuario;
+      ..usuarioNombre = appManager.requestUsername;
 
     try {
       final env = await ResApiService.instance.imprimir(req);
@@ -445,8 +445,8 @@ class ResTransactionRunner {
       ..garitaNumero = _safeStr(appManager.kioskConfig?.gate)
       ..tpg = null
       ..ruc = _safeStr(manager.get('driverCedula'))
-      ..usuarioNombre = KioskUserEnv.usuario
-      ..emailJefe = KioskUserEnv.usuario
+      ..usuarioNombre = appManager.requestUsername
+      ..emailJefe = appManager.requestUsername
       ..numTrans = _toInt(manager.get('numTrans'));
 
     try {
@@ -505,8 +505,8 @@ class ResTransactionRunner {
       ..garitaNumero = _safeStr(appManager.kioskConfig?.gate)
       ..tpg = null
       ..ruc = _safeStr(manager.get('driverCedula'))
-      ..usuarioNombre = KioskUserEnv.usuario
-      ..emailJefe = KioskUserEnv.usuario
+      ..usuarioNombre = appManager.requestUsername
+      ..emailJefe = appManager.requestUsername
       ..confirm = confirm
       ..numTrans = _toInt(manager.get('numTrans'))
       ..kioskServer = kioskServer
@@ -653,8 +653,8 @@ class ResTransactionRunner {
     req.ruc = _safeStr(m.get('driverCedula'));
     req.nombres = _safeStr(m.get('driverName'));
 
-    req.usuarioNombre = KioskUserEnv.usuario;
-    req.emailJefe = KioskUserEnv.usuario;
+    req.usuarioNombre = app.requestUsername;
+    req.emailJefe = app.requestUsername;
 
     req.fechaBarreraRaw = null;
     req.tipoMov = _safeStr(m.get('transactionType'));

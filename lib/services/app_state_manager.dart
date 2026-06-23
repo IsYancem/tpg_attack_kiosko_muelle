@@ -47,6 +47,49 @@ class AppStateManager extends ChangeNotifier {
   String? _refreshToken;
   KioskConfigModel? _kioskConfig;
 
+  String _rawLoginUsername = '';
+  String _requestUsername = '';
+
+  String get rawLoginUsername => _rawLoginUsername;
+  String get requestUsername => _requestUsername;
+
+  String staapisacId = '';
+  String staapisacUsername = '';
+  String staapisacComputerName = '';
+  String staapisacAccessToken = '';
+  String staapisacRefreshToken = '';
+
+  String staapisacLoginUsername = '';
+  String staapisacLoginPassword = '';
+
+  bool get hasStaapisacCredentials =>
+      staapisacLoginUsername.trim().isNotEmpty &&
+      staapisacLoginPassword.trim().isNotEmpty;
+
+  static String normalizeRequestUsername(String? value) {
+    final input = (value ?? '').trim();
+    if (input.isEmpty) return '';
+
+    final atIndex = input.indexOf('@');
+    if (atIndex > 0) {
+      return input.substring(0, atIndex).trim();
+    }
+
+    return input;
+  }
+
+  void setLoginUsername(String value) {
+    _rawLoginUsername = value.trim();
+    _requestUsername = normalizeRequestUsername(_rawLoginUsername);
+
+    LogService.instance.logRequest('APPSTATE_SET_LOGIN_USERNAME', {
+      'rawLoginUsername': _rawLoginUsername,
+      'requestUsername': _requestUsername,
+    });
+
+    notifyListeners();
+  }
+
   String? get accessToken => _accessToken;
   String? get refreshToken => _refreshToken;
   KioskConfigModel? get kioskConfig => _kioskConfig;
@@ -123,15 +166,6 @@ class AppStateManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // =======================
-  // STAAPISAC AUTH CACHE
-  // =======================
-  String staapisacId = '';
-  String staapisacUsername = '';
-  String staapisacComputerName = '';
-  String staapisacAccessToken = '';
-  String staapisacRefreshToken = '';
-
   bool get hasStaapisacAuth =>
       staapisacAccessToken.isNotEmpty && staapisacRefreshToken.isNotEmpty;
 
@@ -147,6 +181,46 @@ class AppStateManager extends ChangeNotifier {
     staapisacComputerName = computerName;
     staapisacAccessToken = accessToken;
     staapisacRefreshToken = refreshToken;
+    notifyListeners();
+  }
+
+  void setStaapisacCredentials({
+    required String username,
+    required String password,
+  }) {
+    staapisacLoginUsername = normalizeRequestUsername(username);
+    staapisacLoginPassword = password;
+
+    LogService.instance.logRequest('APPSTATE_SET_STAAPISAC_CREDENTIALS', {
+      'username': staapisacLoginUsername,
+      'hasPassword': staapisacLoginPassword.isNotEmpty,
+    });
+
+    notifyListeners();
+  }
+
+  void clearStaapisacAuth() {
+    staapisacId = '';
+    staapisacUsername = '';
+    staapisacComputerName = '';
+    staapisacAccessToken = '';
+    staapisacRefreshToken = '';
+
+    LogService.instance.logRequest('APPSTATE_CLEAR_STAAPISAC_AUTH', {
+      'credentialsPreserved': hasStaapisacCredentials,
+    });
+
+    notifyListeners();
+  }
+
+  void clearStaapisacCredentials() {
+    staapisacLoginUsername = '';
+    staapisacLoginPassword = '';
+
+    LogService.instance.logRequest('APPSTATE_CLEAR_STAAPISAC_CREDENTIALS', {
+      'cleared': true,
+    });
+
     notifyListeners();
   }
 

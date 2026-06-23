@@ -590,6 +590,13 @@ class AtkTransactionManager extends ChangeNotifier {
   void setFlowRemainingSeconds(int? v) => set('flowRemainingSeconds', v);
   void clearFlowRemainingSeconds() => set('flowRemainingSeconds', null);
 
+  String? get loginRawUsername => _d['loginRawUsername'] as String?;
+  String? get requestUsername => _d['requestUsername'] as String?;
+
+  String? get loginPassword => _d['loginPassword'] as String?;
+  String? get staapisacLoginUsername => _d['staapisacLoginUsername'] as String?;
+  String? get staapisacLoginPassword => _d['staapisacLoginPassword'] as String?;
+
   // ── Reset por categoría ───────────────────────────────────────────────────
 
   static const Map<String, List<String>> _categoryKeys = {
@@ -921,6 +928,11 @@ class AtkTransactionManager extends ChangeNotifier {
       'authHasOcrMuelleGroup',
       'loggedUserName',
       'loggedUserIdentification',
+      'loginRawUsername',
+      'requestUsername',
+      'loginPassword',
+      'staapisacLoginUsername',
+      'staapisacLoginPassword',
     ];
 
     final result = <String, dynamic>{};

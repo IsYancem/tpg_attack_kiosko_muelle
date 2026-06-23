@@ -54,6 +54,8 @@ class _AtkFooterBarState extends State<AtkFooterBarCommon> with SafeState {
     'SENSOR',
   ];
 
+  static const String _appVersionLabel = 'Attack OCR Kiosko · v1.0';
+
   late Map<String, bool> _statuses;
 
   MdwlService? _mdwlService;
@@ -198,9 +200,66 @@ class _AtkFooterBarState extends State<AtkFooterBarCommon> with SafeState {
                 ),
               ),
             ),
+            SizedBox(width: 12 * s),
+            _versionSeal(context, s),
+            SizedBox(width: 12 * s),
             AtkModeToggle(onChanged: widget.onModeChanged ?? (_) {}, scale: s),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _versionSeal(BuildContext context, double scale) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    const accentColor = Color(0xFF2563EB);
+
+    final bgColor = isDark
+        ? const Color(0xFF111827).withValues(alpha: 0.94)
+        : Colors.white.withValues(alpha: 0.92);
+
+    final textColor = isDark
+        ? Colors.white.withValues(alpha: 0.92)
+        : const Color(0xFF1E293B);
+
+    return Container(
+      height: 44 * scale,
+      padding: EdgeInsets.symmetric(
+        horizontal: 18 * scale,
+        vertical: scale,
+      ),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999 * scale),
+        border: Border.all(
+          color: accentColor.withValues(alpha: 0.42),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+            blurRadius: 14 * scale,
+            offset: Offset(0, 3 * scale),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.verified_outlined, size: 24 * scale, color: accentColor),
+          SizedBox(width: 10 * scale),
+          Text(
+            _appVersionLabel,
+            style: TextStyle(
+              fontSize: 28 * scale,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.35,
+              color: textColor,
+            ),
+          ),
+        ],
       ),
     );
   }

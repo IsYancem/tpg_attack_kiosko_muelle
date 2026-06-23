@@ -456,8 +456,8 @@ class ExpDobleService {
       'refrigeradoDisv': manager.vehiculoRefrigerado,
       'pesoCenso': manager.pesoActualBascula.toInt(),
       'fotoConductor': manager.driverPhotoUrl,
-      'usuarioNombre': KioskUserEnv.usuario,
-      'emailJefe': KioskUserEnv.usuario,
+      'usuarioNombre': appManager.requestUsername,
+      'emailJefe': appManager.requestUsername,
       'ip': appManager.kioskConfig?.kioskServer,
     };
   }
@@ -548,15 +548,15 @@ class ExpDobleService {
       'nombreConductor': manager.driverName,
       'cargaIMO': manager.vehiculoCargaImo,
       'garitaLetra': appManager.kioskConfig?.gateLetter ?? 'A',
-      'usuarioNombre': KioskUserEnv.usuario,
-      'emailJefe': KioskUserEnv.usuario,
+      'usuarioNombre': appManager.requestUsername,
+      'emailJefe': appManager.requestUsername,
       'ip': appManager.kioskConfig?.kioskServer,
       'tpg': int.tryParse(appManager.kioskConfig?.patio ?? '1') ?? 1,
       'doorNumber': 1,
       'garitaNumero': int.tryParse(appManager.kioskConfig?.gate ?? '1') ?? 1,
       'tipoMov': 'EXP',
       'fechaBarrera': _fechaBarrera(),
-      'bodegueroUser': KioskUserEnv.usuario,
+      'bodegueroUser': appManager.requestUsername,
     };
   }
 

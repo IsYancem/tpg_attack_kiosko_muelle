@@ -8,7 +8,6 @@ import 'package:tpg_attack_kiosko_muelle/screens/auth/login_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/errors/access_denied_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/auth/rfidScanner_screen.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/errors/error_screen.dart';
-import 'package:tpg_attack_kiosko_muelle/services/apis/staapisac_api_service.dart';
 import 'package:tpg_attack_kiosko_muelle/services/app_state_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/atk_transaction_manager.dart';
 import 'package:tpg_attack_kiosko_muelle/services/global_manager.dart';
@@ -57,10 +56,7 @@ Future<void> main() async {
   final atkManager = AtkTransactionManager();
   GlobalManager.instance.init(atkManager);
 
-  final isTestMode = dotenv.env['IS_TEST_MODE']?.toLowerCase() == 'true';
-  final winUser = isTestMode
-      ? (dotenv.env['TEST_USER'] ?? 'TestUserNotSet')
-      : (WindowsUserService.instance.getUserInfo()['username'] ?? 'Unknown');
+  final winUser = (WindowsUserService.instance.getUserInfo()['username'] ?? 'Unknown');
 
   final baseMw = dotenv.env['BASE_MIDDLEWARE_URL'] ?? '';
   final bascula = dotenv.env['BASCULA'] ?? '';
@@ -81,18 +77,6 @@ Future<void> main() async {
   });
 
   runApp(_wrapWithState(appState, atkManager, const LoginScreen()));
-
-  unawaited(_loginStaapisacInBackground(appState));
-}
-
-Future<void> _loginStaapisacInBackground(AppStateManager appState) async {
-  try {
-    await StaapisacApiService()
-        .loginStaapisac(appState: appState)
-        .timeout(const Duration(seconds: 8));
-  } catch (e, st) {
-    LogService.instance.logError('STAAPISAC_LOGIN_MAIN_FAIL', e, st);
-  }
 }
 
 Widget _wrapWithState(

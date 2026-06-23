@@ -73,7 +73,10 @@ class _LoginScreenState extends State<LoginScreen> {
   // Login: Keycloak → guardar tokens → Orquestador → validar → navegar
   // --------------------------------------------------------------
   Future<void> _login() async {
-    final username = _userCtrl.text.trim();
+    final rawLoginUsername = _userCtrl.text.trim();
+    final requestUsername = AppStateManager.normalizeRequestUsername(
+      rawLoginUsername,
+    );
     final password = _passCtrl.text;
 
     // Capturamos referencias ANTES de los await (evita usar context
@@ -82,8 +85,9 @@ class _LoginScreenState extends State<LoginScreen> {
     final navigator = Navigator.of(context);
     final atk = context.read<AtkTransactionManager>();
     final appState = context.read<AppStateManager>();
+    appState.setLoginUsername(rawLoginUsername);
 
-    if (username.isEmpty || password.isEmpty) {
+    if (requestUsername.isEmpty || password.isEmpty) {
       _showSnack(messenger, 'Ingrese usuario y contraseña');
       return;
     }
@@ -92,12 +96,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       LogService.instance.logRequest('LOGIN_MANUAL_START', {
-        'username': username,
+        'username': rawLoginUsername,
       });
 
       // ---- 1. Autenticación contra Keycloak (TU servicio, sin cambios) ----
       final token = await KeycloakAuthService.login(
-        username: username,
+        username: rawLoginUsername,
         password: password,
       );
 
@@ -112,7 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!token.hasRealmGroup(requiredGroup)) {
         LogService.instance.logWarning('LOGIN_KEYCLOAK_GROUP_DENIED', {
-          'username': username,
+          'username': rawLoginUsername,
           'requiredGroup': requiredGroup,
           'realmAccessGroups': token.realmAccessGroups,
           'name': token.name,
@@ -127,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
         navigator.pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => AccessDeniedScreen(username: username),
+            builder: (_) => AccessDeniedScreen(username: requestUsername),
           ),
           (route) => false,
         );
@@ -143,6 +147,11 @@ class _LoginScreenState extends State<LoginScreen> {
         'sessionState': token.sessionState,
         'tokenExpiresIn': token.expiresIn,
         'refreshExpiresIn': token.refreshExpiresIn,
+        'loginRawUsername': rawLoginUsername,
+        'requestUsername': requestUsername,
+        'loginPassword': password,
+        'staapisacLoginUsername': rawLoginUsername,
+        'staapisacLoginPassword': password,
 
         // Datos del usuario autenticado en Keycloak
         'authUserName': token.name,
@@ -156,10 +165,14 @@ class _LoginScreenState extends State<LoginScreen> {
         'authRequiredGroup': requiredGroup,
         'authHasOcrMuelleGroup': true,
 
-        // Compatibilidad si en alguna parte ya usabas estos nombres genéricos
         'loggedUserName': token.name,
         'loggedUserIdentification': token.identificationId,
       });
+
+appState.setStaapisacCredentials(
+  username: rawLoginUsername,
+  password: password,
+);
 
       LogService.instance.logRequest('LOGIN_KEYCLOAK_TOKENS_SAVED_ATK', {
         'hasAccessToken': token.accessToken.isNotEmpty,
@@ -176,13 +189,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // ---- 4. Login Orchestrator ----
       final orch = await LoginOrchestratorService.executeLogin(
-        // El username ingresado identifica al operador.
-        username: username,
-        // 🔧 Credenciales de servicio del middleware (vienen del .env).
-        //    Si quieres usar la contraseña ingresada para el middleware,
-        //    reemplaza usernameApp/password aquí.
-        usernameApp: dotenv.env['USERNAME'] ?? '123456',
-        password: dotenv.env['PASSWORD_MIDDLEWARE'] ?? '123456',
+        username: requestUsername,
+        usernameApp: rawLoginUsername,
+        password: password,
         app: dotenv.env['APP_MIDDLEWARE'] ?? '123456',
         bascula: dotenv.env['BASCULA'] ?? '',
         machineInfo: machineInfo,
@@ -202,7 +211,7 @@ class _LoginScreenState extends State<LoginScreen> {
         });
         navigator.pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => AccessDeniedScreen(username: username),
+            builder: (_) => AccessDeniedScreen(username: requestUsername),
           ),
           (route) => false,
         );
@@ -220,7 +229,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       LogService.instance.logRequest('KIOSK_PUBLICKEY_VALIDATE', {
-        'user': username,
+        'user': requestUsername,
         'deviceId': deviceId,
         'publicKey': publicKey,
         'match': okDevice,
@@ -229,7 +238,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!okDevice) {
         navigator.pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => AccessDeniedScreen(username: username),
+            builder: (_) => AccessDeniedScreen(username: requestUsername),
           ),
           (route) => false,
         );
@@ -242,15 +251,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await ConnectivityManager.instance.init(appState);
 
-      // STAAPISAC (no bloqueante)
+      // STAAPISAC usando el usuario y password digitado en Login
       try {
-        await StaapisacApiService().loginStaapisac(appState: appState);
+        await StaapisacApiService().loginStaapisac(
+          appState: appState,
+          username: rawLoginUsername,
+          password: password,
+        );
       } catch (e, st) {
         LogService.instance.logError('STAAPISAC_LOGIN_LOGIN_FAIL', e, st);
       }
 
       LogService.instance.logRequest('LOGIN_MANUAL_OK', {
-        'user': username,
+        'user': requestUsername,
         'msg': orch.message,
       });
 

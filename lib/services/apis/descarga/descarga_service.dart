@@ -138,7 +138,7 @@ class DescargaService {
       'choferRuc': manager.driverCedula,
       'choferNombres': manager.driverName,
       'deviceId': app.kioskConfig?.gate,
-      'usuarioNombre': KioskUserEnv.usuario,
+      'usuarioNombre': app.requestUsername,
       'tpg': tpgNumber,
       'garitaLetra': app.kioskConfig?.gateLetter,
       'garitaNumero': app.kioskConfig?.gate,

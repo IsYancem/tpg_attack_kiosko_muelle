@@ -120,10 +120,7 @@ class ConfirmService {
     final uri = Uri.parse('${baseUrl}kiosk/api/confirm/transaccion');
     manager.clearError();
 
-    final isTestMode = dotenv.env['IS_TEST_MODE']?.toLowerCase() == 'true';
-    final winUser = isTestMode
-        ? (dotenv.env['TEST_USER'] ?? 'TestUserNotSet')
-        : (WindowsUserService.instance.getUserInfo()['username'] ?? 'Unknown');
+    final winUser = WindowsUserService.instance.getUserInfo()['username'] ?? 'Unknown';
 
     try {
       // ---------------------------------------------------------------
@@ -216,10 +213,7 @@ class ConfirmService {
 
     manager.clearError();
 
-    final isTestMode = dotenv.env['IS_TEST_MODE']?.toLowerCase() == 'true';
-    final winUser = isTestMode
-        ? (dotenv.env['TEST_USER'] ?? 'TestUserNotSet')
-        : (WindowsUserService.instance.getUserInfo()['username'] ?? 'Unknown');
+    final winUser = WindowsUserService.instance.getUserInfo()['username'] ?? 'Unknown';
 
     try {
       final movementActive = manager.get('movement_active');

@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:tpg_attack_kiosko_muelle/services/apis/ocr_client_auth_service.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:tpg_attack_kiosko_muelle/services/global_manager.dart';
@@ -35,23 +36,6 @@ class OcrEvent {
   });
 }
 
-class OcrAuthResult {
-  final String accessToken;
-  final int expiresIn;
-
-  OcrAuthResult({
-    required this.accessToken,
-    required this.expiresIn,
-  });
-
-  factory OcrAuthResult.fromJson(Map<String, dynamic> json) {
-    return OcrAuthResult(
-      accessToken: (json['access_token'] ?? '').toString(),
-      expiresIn: int.tryParse((json['expires_in'] ?? '0').toString()) ?? 0,
-    );
-  }
-}
-
 class OcrService extends BaseService {
   WebSocketChannel? _channel;
   StreamSubscription? _channelSub;
@@ -59,15 +43,10 @@ class OcrService extends BaseService {
   bool _disposed = false;
   bool _shouldReconnect = true;
   bool _reconnectScheduled = false;
-  bool _authInProgress = false;
 
   String? _lastUrl;
-  String? _cachedToken;
-  DateTime? _tokenExpiresAt;
 
-  OcrService({
-    required super.onStatus,
-  });
+  OcrService({required super.onStatus});
 
   final StreamController<OcrEvent> _ocrEventCtrl =
       StreamController<OcrEvent>.broadcast();
@@ -120,22 +99,10 @@ class OcrService extends BaseService {
     }
   }
 
-  Future<String?> _getValidToken({
-    bool forceRefresh = false,
-  }) async {
-    if (!forceRefresh && _hasValidCachedToken) {
-      return _cachedToken;
-    }
-
-    return _loginAndGetTokenWithRetry();
-  }
-
-  bool get _hasValidCachedToken {
-    if (_cachedToken == null || _cachedToken!.isEmpty) return false;
-    if (_tokenExpiresAt == null) return false;
-
-    final now = DateTime.now();
-    return now.isBefore(_tokenExpiresAt!.subtract(const Duration(seconds: 30)));
+  Future<String?> _getValidToken({bool forceRefresh = false}) async {
+    return OcrClientAuthService.instance.getAccessToken(
+      forceRefresh: forceRefresh,
+    );
   }
 
   void _doConnect(String fullUrl, String token) {
@@ -147,9 +114,7 @@ class OcrService extends BaseService {
 
       _channel = IOWebSocketChannel.connect(
         Uri.parse(fullUrl),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
+        headers: {'Authorization': 'Bearer $token'},
       );
 
       setConnected(true);
@@ -174,9 +139,7 @@ class OcrService extends BaseService {
   void _onData(dynamic data) {
     final raw = data.toString();
 
-    LogService.instance.logRequest('OCR_RAW_MESSAGE', {
-      'message': raw,
-    });
+    LogService.instance.logRequest('OCR_RAW_MESSAGE', {'message': raw});
 
     try {
       final decoded = jsonDecode(raw);
@@ -218,9 +181,9 @@ class OcrService extends BaseService {
 
       final containers = containersRaw is List
           ? containersRaw
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList()
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
           : <Map<String, dynamic>>[];
 
       final meta = decoded['meta'];
@@ -235,7 +198,8 @@ class OcrService extends BaseService {
         note: dataMap['note']?.toString() ?? '',
         status: dataMap['status']?.toString() ?? '',
         containers: containers,
-        timestamp: DateTime.tryParse(
+        timestamp:
+            DateTime.tryParse(
               meta is Map ? meta['emittedAt']?.toString() ?? '' : '',
             ) ??
             DateTime.now(),
@@ -345,10 +309,7 @@ class OcrService extends BaseService {
         'ocrContainer${index}ImageUrl',
         c['imageUrl']?.toString() ?? '',
       );
-      manager.set(
-        'ocrContainer${index}Tare',
-        c['tare']?.toString() ?? '',
-      );
+      manager.set('ocrContainer${index}Tare', c['tare']?.toString() ?? '');
       manager.set(
         'ocrContainer${index}TareConfidence',
         c['tareConfidence']?.toString() ?? '',
@@ -381,9 +342,7 @@ class OcrService extends BaseService {
     final ok = json['ok'];
     final message = json['message']?.toString().toLowerCase().trim() ?? '';
 
-    return type == 'error' &&
-        ok == false &&
-        message.contains('token expirado');
+    return type == 'error' && ok == false && message.contains('token expirado');
   }
 
   void _handleTokenExpired() {
@@ -391,8 +350,7 @@ class OcrService extends BaseService {
       'message': 'El WebSocket indicó token expirado',
     });
 
-    _cachedToken = null;
-    _tokenExpiresAt = null;
+    OcrClientAuthService.instance.clearCache();
 
     setConnected(false);
     StatusLogBus.instance.addStatus('OCR', false);
@@ -423,9 +381,7 @@ class OcrService extends BaseService {
     _scheduleReconnect(forceRefreshToken: false);
   }
 
-  void _scheduleReconnect({
-    required bool forceRefreshToken,
-  }) {
+  void _scheduleReconnect({required bool forceRefreshToken}) {
     if (!_shouldReconnect || _disposed || _lastUrl == null) return;
     if (_reconnectScheduled) return;
 
@@ -469,138 +425,6 @@ class OcrService extends BaseService {
       _channel?.sink.close();
       _channel = null;
     } catch (_) {}
-  }
-
-  Future<String?> _loginAndGetTokenWithRetry() async {
-    if (_authInProgress) {
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      if (_hasValidCachedToken) return _cachedToken;
-    }
-
-    _authInProgress = true;
-
-    try {
-      const maxAttempts = 3;
-
-      for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          final auth = await _loginAndGetTokenOnce(attempt: attempt);
-
-          if (auth != null && auth.accessToken.isNotEmpty) {
-            _cachedToken = auth.accessToken;
-
-            final safeExpiresIn =
-                auth.expiresIn > 60 ? auth.expiresIn - 30 : auth.expiresIn;
-
-            _tokenExpiresAt = DateTime.now().add(
-              Duration(seconds: safeExpiresIn),
-            );
-
-            LogService.instance.logRequest('OCR_AUTH_CACHE_SET', {
-              'expiresIn': auth.expiresIn,
-              'tokenExpiresAt': _tokenExpiresAt?.toIso8601String(),
-            });
-
-            return _cachedToken;
-          }
-        } catch (e, st) {
-          LogService.instance.logError('OCR_AUTH_ATTEMPT_ERROR', e, st);
-        }
-
-        if (attempt < maxAttempts) {
-          await Future.delayed(Duration(seconds: attempt));
-        }
-      }
-
-      LogService.instance.logWarning('OCR_AUTH_RETRY_EXHAUSTED', {
-        'attempts': maxAttempts,
-      });
-
-      return null;
-    } finally {
-      _authInProgress = false;
-    }
-  }
-
-  Future<OcrAuthResult?> _loginAndGetTokenOnce({
-    required int attempt,
-  }) async {
-    final authUrl = dotenv.env['OCR_AUTH_URL'] ?? '';
-    final clientId = dotenv.env['OCR_CLIENT_ID'] ?? '';
-    final clientSecret = dotenv.env['OCR_CLIENT_SECRET'] ?? '';
-
-    if (authUrl.trim().isEmpty ||
-        clientId.trim().isEmpty ||
-        clientSecret.trim().isEmpty) {
-      LogService.instance.logWarning('OCR_AUTH_CONFIG_MISSING', {
-        'hasAuthUrl': authUrl.trim().isNotEmpty,
-        'hasClientId': clientId.trim().isNotEmpty,
-        'hasClientSecret': clientSecret.trim().isNotEmpty,
-      });
-      return null;
-    }
-
-    LogService.instance.logRequest('OCR_AUTH_START', {
-      'url': authUrl,
-      'clientId': clientId,
-      'attempt': attempt,
-    });
-
-    final response = await http
-        .post(
-          Uri.parse(authUrl),
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: {
-            'grant_type': 'client_credentials',
-            'client_id': clientId,
-            'client_secret': clientSecret,
-          },
-        )
-        .timeout(const Duration(seconds: 15));
-
-    LogService.instance.logRequest('OCR_AUTH_RESPONSE', {
-      'statusCode': response.statusCode,
-      'bodyLength': response.body.length,
-      'attempt': attempt,
-    });
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      LogService.instance.logWarning('OCR_AUTH_FAILED', {
-        'statusCode': response.statusCode,
-        'body': response.body,
-        'attempt': attempt,
-      });
-      return null;
-    }
-
-    final decoded = jsonDecode(response.body);
-
-    if (decoded is! Map<String, dynamic>) {
-      LogService.instance.logWarning('OCR_AUTH_INVALID_JSON', {
-        'attempt': attempt,
-      });
-      return null;
-    }
-
-    final auth = OcrAuthResult.fromJson(decoded);
-
-    if (auth.accessToken.isEmpty) {
-      LogService.instance.logWarning('OCR_AUTH_TOKEN_EMPTY', {
-        'attempt': attempt,
-      });
-      return null;
-    }
-
-    LogService.instance.logRequest('OCR_AUTH_OK', {
-      'expiresIn': auth.expiresIn,
-      'tokenLength': auth.accessToken.length,
-      'attempt': attempt,
-    });
-
-    return auth;
   }
 
   @override
