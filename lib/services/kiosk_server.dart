@@ -152,18 +152,18 @@ class KioskServer {
       final jsonString = jsonEncode(payload);
       final bytes = utf8.encode(jsonString);
 
-      await LogService.instance.logRequest('KioskServer.prepareChoferPayload', {
+      LogService.instance.logRequest('KioskServer.prepareChoferPayload', {
         'payload': payload,
       });
 
       final ok = await _send(bytes, ip: ip, port: port);
-      await LogService.instance.logRequest('KioskServer.connectMonitorChofer', {
+      LogService.instance.logRequest('KioskServer.connectMonitorChofer', {
         'accion': accion,
         'result': ok ? 'success' : 'failure',
       });
       return ok;
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'KioskServer.connectMonitorChofer',
         e,
         st,
@@ -217,7 +217,7 @@ class KioskServer {
     required String jsonData,
     required String tipo,
   }) async {
-    await LogService.instance.logRequest('KioskServer.procesarMonitorAttack', {
+    LogService.instance.logRequest('KioskServer.procesarMonitorAttack', {
       'action': 'starting_monitor_attack_processing',
       'tipo': tipo,
       'json_length': jsonData.length,
@@ -227,7 +227,7 @@ class KioskServer {
       // Parsear el JSON para validar formato
       final info = json.decode(jsonData);
 
-      await LogService.instance.logRequest(
+      LogService.instance.logRequest(
         'KioskServer.procesarMonitorAttack',
         {'action': 'json_parsed_successfully', 'info': info},
       );
@@ -244,7 +244,7 @@ class KioskServer {
 
       return true;
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'KioskServer.procesarMonitorAttack',
         e,
         st,

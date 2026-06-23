@@ -174,7 +174,7 @@ class PrintExmRutaService {
         return true;
       }
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'PrintExmRutaService.printTicketCombinado',
         e,
         st,

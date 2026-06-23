@@ -25,7 +25,7 @@ class LoginOrchestratorService {
     final uri = Uri.parse(url);
     final sw = Stopwatch()..start();
 
-    await LogService.instance.logRequest('LOGIN_ORCH_START', {
+    LogService.instance.logRequest('LOGIN_ORCH_START', {
       'url': url,
       'method': 'POST',
       'username': username,
@@ -61,7 +61,7 @@ class LoginOrchestratorService {
         'Accept': 'application/json',
       };
 
-      await LogService.instance.logRequest('LOGIN_ORCH_REQUEST', {
+      LogService.instance.logRequest('LOGIN_ORCH_REQUEST', {
         'url': url,
         'method': 'POST',
         'headers': headers,
@@ -73,7 +73,7 @@ class LoginOrchestratorService {
           .post(uri, headers: headers, body: jsonEncode(payload))
           .timeout(const Duration(seconds: 90));
 
-      await LogService.instance.logRequest('LOGIN_ORCH_RESPONSE_RAW', {
+      LogService.instance.logRequest('LOGIN_ORCH_RESPONSE_RAW', {
         'url': url,
         'statusCode': res.statusCode,
         'latencyMs': sw.elapsedMilliseconds,
@@ -81,7 +81,7 @@ class LoginOrchestratorService {
       });
 
       if (res.statusCode != 200 && res.statusCode != 201) {
-        await LogService.instance.logError('LOGIN_ORCH_HTTP_FAIL', {
+        LogService.instance.logError('LOGIN_ORCH_HTTP_FAIL', {
           'url': url,
           'statusCode': res.statusCode,
           'latencyMs': sw.elapsedMilliseconds,
@@ -95,7 +95,7 @@ class LoginOrchestratorService {
       final decoded = jsonDecode(utf8.decode(res.bodyBytes));
 
       if (decoded is! Map<String, dynamic>) {
-        await LogService.instance.logWarning('LOGIN_ORCH_INVALID_JSON', {
+        LogService.instance.logWarning('LOGIN_ORCH_INVALID_JSON', {
           'url': url,
           'statusCode': res.statusCode,
           'rawBody': res.body,
@@ -104,7 +104,7 @@ class LoginOrchestratorService {
         return null;
       }
 
-      await LogService.instance.logRequest('LOGIN_ORCH_RESPONSE_JSON', {
+      LogService.instance.logRequest('LOGIN_ORCH_RESPONSE_JSON', {
         'url': url,
         'statusCode': res.statusCode,
         'latencyMs': sw.elapsedMilliseconds,
@@ -114,7 +114,7 @@ class LoginOrchestratorService {
 
       final parsed = LoginOrchestratorResponse.fromJson(decoded);
 
-      await LogService.instance.logRequest('LOGIN_ORCH_PARSED', {
+      LogService.instance.logRequest('LOGIN_ORCH_PARSED', {
         'errorCode': parsed.errorCode,
         'message': parsed.message,
         'services': {
@@ -127,7 +127,7 @@ class LoginOrchestratorService {
 
       await _saveLoginState(parsed);
 
-      await LogService.instance.logRequest('LOGIN_ORCH_OK', {
+      LogService.instance.logRequest('LOGIN_ORCH_OK', {
         'latencyMs': sw.elapsedMilliseconds,
         'errorCode': parsed.errorCode,
         'message': parsed.message,
@@ -136,9 +136,9 @@ class LoginOrchestratorService {
 
       return parsed;
     } catch (e, st) {
-      await LogService.instance.logError('LOGIN_ORCH_EXCEPTION', e, st);
+      LogService.instance.logError('LOGIN_ORCH_EXCEPTION', e, st);
 
-      await LogService.instance.logRequest('LOGIN_ORCH_FAIL_CONTEXT', {
+      LogService.instance.logRequest('LOGIN_ORCH_FAIL_CONTEXT', {
         'latencyMs': sw.elapsedMilliseconds,
         'url': url,
         'username': username,
@@ -164,7 +164,7 @@ class LoginOrchestratorService {
       final parametersData = parsed.data.parametersAtak?.data;
       final sessionData = parsed.data.kioskSessionLogIns?.data;
 
-      await LogService.instance.logRequest('LOGIN_ORCH_SAVE_STATE_START', {
+      LogService.instance.logRequest('LOGIN_ORCH_SAVE_STATE_START', {
         'hasMiddlewareData': middlewareData != null,
         'hasKioskConfigData': kioskCfgData != null,
         'hasGateData': gateData != null,
@@ -183,7 +183,7 @@ class LoginOrchestratorService {
 
         appState.setTokens(accessToken, refreshToken);
 
-        await LogService.instance.logRequest('LOGIN_ORCH_TOKENS_SAVED', {
+        LogService.instance.logRequest('LOGIN_ORCH_TOKENS_SAVED', {
           'hasAccessToken': accessToken.isNotEmpty,
           'hasRefreshToken': refreshToken.isNotEmpty,
           'accessTokenPreview': _tokenPreview(accessToken),
@@ -195,7 +195,7 @@ class LoginOrchestratorService {
         final cfg = KioskConfigModel.fromJson(kioskCfgData);
         appState.setKioskConfig(cfg);
 
-        await LogService.instance.logRequest('LOGIN_ORCH_KIOSK_CONFIG_SAVED', {
+        LogService.instance.logRequest('LOGIN_ORCH_KIOSK_CONFIG_SAVED', {
           'raw': kioskCfgData,
           'gate': cfg.gate,
           'gateLetter': cfg.gateLetter,
@@ -212,7 +212,7 @@ class LoginOrchestratorService {
           final gateCfg = GateConfigModel.fromJson(firstGate);
           appState.setGateConfig(gateCfg);
 
-          await LogService.instance.logRequest('LOGIN_ORCH_GATE_CONFIG_SAVED', {
+          LogService.instance.logRequest('LOGIN_ORCH_GATE_CONFIG_SAVED', {
             'raw': firstGate,
             'name': gateCfg.name,
             'side': gateCfg.side,
@@ -242,21 +242,21 @@ class LoginOrchestratorService {
               'peso_a_mano': parameters.pesoAMano,
             });
       } else {
-        await LogService.instance.logWarning(
+        LogService.instance.logWarning(
           'LOGIN_ORCH_PARAMETERS_ATAK_MISSING',
           {'parametersData': parametersData},
         );
       }
 
       if (sessionData is Map<String, dynamic>) {
-        await LogService.instance.logRequest('LOGIN_ORCH_SESSION_LOG_SAVED', {
+        LogService.instance.logRequest('LOGIN_ORCH_SESSION_LOG_SAVED', {
           'errcode': sessionData['errcode'],
           'errmsg': sessionData['errmsg'],
           'session_id': sessionData['session_id'],
         });
       }
 
-      await LogService.instance.logRequest('LOGIN_ORCH_SAVE_STATE_OK', {
+      LogService.instance.logRequest('LOGIN_ORCH_SAVE_STATE_OK', {
         'latencyMs': sw.elapsedMilliseconds,
         'hasParametersAtak': appState.hasParametersAtak,
         'porteoPeso': appState.porteoPeso,
@@ -264,13 +264,13 @@ class LoginOrchestratorService {
         'pesoPromedio': appState.pesoPromedio,
       });
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'LOGIN_ORCH_SAVE_STATE_EXCEPTION',
         e,
         st,
       );
 
-      await LogService.instance.logWarning('LOGIN_ORCH_SAVE_STATE_FAIL', {
+      LogService.instance.logWarning('LOGIN_ORCH_SAVE_STATE_FAIL', {
         'latencyMs': sw.elapsedMilliseconds,
         'error': e.toString(),
       });

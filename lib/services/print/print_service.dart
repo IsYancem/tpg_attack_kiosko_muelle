@@ -37,7 +37,7 @@ class PrintService {
     bool saveToSpecificPath = true,
     bool autoPrint = true,
   }) async {
-    await LogService.instance.logRequest('PrintService.startPrint', {
+    LogService.instance.logRequest('PrintService.startPrint', {
       'action': 'starting_print_process',
       'tipo': tipo,
       'save_to_specific_path': saveToSpecificPath,
@@ -94,14 +94,14 @@ class PrintService {
           );
 
         default:
-          await LogService.instance.logWarning('PrintService.startPrint', {
+          LogService.instance.logWarning('PrintService.startPrint', {
             'warning': 'unsupported_print_type',
             'tipo': tipo,
           });
           return false;
       }
     } catch (e, st) {
-      await LogService.instance.logError('PrintService.startPrint', e, st);
+      LogService.instance.logError('PrintService.startPrint', e, st);
       return false;
     }
   }

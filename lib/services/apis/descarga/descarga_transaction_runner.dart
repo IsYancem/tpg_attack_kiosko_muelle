@@ -16,9 +16,7 @@ class DescargaTransactionRunner {
   final DescargaService _service;
   final LogService _log;
 
-  // ⏱️ Segundos que la pantalla de éxito permanece visible antes de volver al OCR.
-  // Bájalo a 0–3 si quieres que sea prácticamente inmediato.
-  static const int kSuccessCountdownSeconds = 5;
+  static const int kSuccessCountdownSeconds = 2;
 
   DescargaTransactionRunner({DescargaService? service, LogService? log})
     : _service = service ?? DescargaService(),
@@ -99,10 +97,10 @@ class DescargaTransactionRunner {
         return;
       }
 
-      manager.setMany({
+      manager.setManyWithoutNotify({
         ...initMap,
-        'isLoading': false,
-        'mensajeInferior': 'Descarga inicializada correctamente',
+        'isLoading': true,
+        'mensajeInferior': 'Descarga inicializada. Guardando...',
       });
 
       _restoreOcrContainerDataIfNeeded(
@@ -186,7 +184,7 @@ class DescargaTransactionRunner {
         return;
       }
 
-      manager.setMany({
+      manager.setManyWithoutNotify({
         ...guardarResp.toManagerMap(),
         'isLoading': true,
         'mensajeInferior': 'Descarga guardada. Abriendo barrera...',
@@ -217,22 +215,17 @@ class DescargaTransactionRunner {
         'isLoading': false,
         'mensajeInferior': 'Descarga completada. Barrera abierta.',
         'descargaGateOpenOk': true,
+        'flowRemainingSeconds': kSuccessCountdownSeconds,
       });
 
-      const totalSeconds = kSuccessCountdownSeconds;
+      // ÚNICA espera visual permitida: 2 segundos después de abrir barrera.
+      await Future.delayed(const Duration(seconds: kSuccessCountdownSeconds));
 
-      for (int i = totalSeconds; i >= 0; i--) {
-        if (!context.mounted) return;
-
-        manager.setFlowRemainingSeconds(i);
-
-        if (i == 0) break;
-        await Future.delayed(const Duration(seconds: 1));
-      }
+      if (!context.mounted) return;
 
       unawaited(
         _log.logRequest('DESCARGA_AUTO_EXIT', {
-          'after_seconds': totalSeconds,
+          'after_seconds': kSuccessCountdownSeconds,
           'placa': manager.vehiculoPlaca,
           'contenedor': manager.contenedor,
           'contenedor1': manager.get('contenedor1'),
@@ -258,7 +251,7 @@ class DescargaTransactionRunner {
         );
       }
     } catch (e, st) {
-      await _log.logError('DESCARGA_RUNNER_EX', e, st);
+      unawaited(_log.logError('DESCARGA_RUNNER_EX', e, st));
 
       if (!context.mounted) return;
 
@@ -327,9 +320,7 @@ class DescargaTransactionRunner {
 
       if (imgB64 == null || imgB64.isEmpty) {
         unawaited(
-          _log.logWarning('DESCARGA_DRIVER_PHOTO_EMPTY', {
-            'driverCedula': id,
-          }),
+          _log.logWarning('DESCARGA_DRIVER_PHOTO_EMPTY', {'driverCedula': id}),
         );
         return;
       }

@@ -19,7 +19,7 @@ class PrintAutoService {
 
     // 1. Verificar que SumatraPDF existe
     if (!await File(_sumatraPath).exists()) {
-      await LogService.instance.logWarning(
+      LogService.instance.logWarning(
         'PrintAutoService.printPdfSilently',
         {'warning': 'sumatra_not_found', 'expected_path': _sumatraPath},
       );
@@ -67,7 +67,7 @@ class PrintAutoService {
         );
       }
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'PrintAutoService.printPdfSilently',
         e,
         st,

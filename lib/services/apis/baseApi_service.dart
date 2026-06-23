@@ -113,7 +113,7 @@ abstract class BaseApiService {
     final uri = _buildUri(spec);
 
     // try #1
-    await LogService.instance.logConnStart(
+    LogService.instance.logConnStart(
       kind: 'http',
       target: uri.toString(),
       extra: {
@@ -124,7 +124,7 @@ abstract class BaseApiService {
       },
     );
     var res = await _execOnce(uri, spec);
-    await LogService.instance.logConnEnd(
+    LogService.instance.logConnEnd(
       kind: 'http',
       target: uri.toString(),
       ok: res.statusCode == 200,
@@ -133,7 +133,7 @@ abstract class BaseApiService {
 
     // refresh si 401/403
     if (res.statusCode == 401 || res.statusCode == 403) {
-      await LogService.instance.logWarning('AUTH_EXPIRED', {
+      LogService.instance.logWarning('AUTH_EXPIRED', {
         'tag': spec.tag,
         'uri': uri.toString(),
         'status': res.statusCode,
@@ -144,7 +144,7 @@ abstract class BaseApiService {
 
       final refreshed = await AuthApiService.refresh(appState);
       if (refreshed) {
-        await LogService.instance.logConnStart(
+        LogService.instance.logConnStart(
           kind: 'http',
           target: uri.toString(),
           extra: {
@@ -154,7 +154,7 @@ abstract class BaseApiService {
           },
         );
         res = await _execOnce(uri, spec);
-        await LogService.instance.logConnEnd(
+        LogService.instance.logConnEnd(
           kind: 'http',
           target: uri.toString(),
           ok: res.statusCode == 200,

@@ -555,6 +555,23 @@ class AtkTransactionManager extends ChangeNotifier {
   Map<String, dynamic>? get expMuelleTerminarResponse =>
       _d['expMuelleTerminarResponse'] as Map<String, dynamic>?;
 
+  String? get authUserName => _d['authUserName'] as String?;
+  String? get authIdentificationId => _d['authIdentificationId'] as String?;
+  String? get authPreferredUsername => _d['authPreferredUsername'] as String?;
+  String? get authEmail => _d['authEmail'] as String?;
+  String? get authRuc => _d['authRuc'] as String?;
+  String? get authUserType => _d['authUserType'] as String?;
+  String? get authGivenName => _d['authGivenName'] as String?;
+  String? get authRequiredGroup => _d['authRequiredGroup'] as String?;
+
+  List<String> get authRealmGroups => _strList(_d['authRealmGroups']);
+
+  bool get authHasOcrMuelleGroup => _bool(_d['authHasOcrMuelleGroup']) ?? false;
+
+  String? get loggedUserName => _d['loggedUserName'] as String?;
+  String? get loggedUserIdentification =>
+      _d['loggedUserIdentification'] as String?;
+
   // ── Utilitarios ───────────────────────────────────────────────────────────
 
   bool get hasPhoto => driverPhotoUrl?.isNotEmpty == true;
@@ -882,4 +899,38 @@ class AtkTransactionManager extends ChangeNotifier {
       set('conseguirConductorChofer', v);
   void setConseguirConductorMessage(String? v) =>
       set('conseguirConductorMessage', v);
+
+  Map<String, dynamic> get authSnapshot {
+    const keys = [
+      'accessToken',
+      'refreshToken',
+      'tokenType',
+      'idToken',
+      'sessionState',
+      'tokenExpiresIn',
+      'refreshExpiresIn',
+      'authUserName',
+      'authIdentificationId',
+      'authPreferredUsername',
+      'authEmail',
+      'authRuc',
+      'authUserType',
+      'authGivenName',
+      'authRealmGroups',
+      'authRequiredGroup',
+      'authHasOcrMuelleGroup',
+      'loggedUserName',
+      'loggedUserIdentification',
+    ];
+
+    final result = <String, dynamic>{};
+
+    for (final key in keys) {
+      if (_d.containsKey(key)) {
+        result[key] = _d[key];
+      }
+    }
+
+    return result;
+  }
 }

@@ -111,7 +111,7 @@ class StaapisacApiService {
     final start = DateTime.now();
     const service = 'staapisac_login';
 
-    await LogService.instance.logSpExec(
+    LogService.instance.logSpExec(
       service: service,
       path: uri.toString(),
       method: 'POST',
@@ -141,7 +141,7 @@ class StaapisacApiService {
       refreshToken: auth.refreshToken ?? '',
     );
 
-    await LogService.instance.logSpResult(
+    LogService.instance.logSpResult(
       service: service,
       path: uri.toString(),
       errorCode: 0,
@@ -170,7 +170,7 @@ class StaapisacApiService {
     final start = DateTime.now();
     const service = 'staapisac_refresh';
 
-    await LogService.instance.logSpExec(
+    LogService.instance.logSpExec(
       service: service,
       path: uri.toString(),
       method: 'GET', // ✅ CORRECTO
@@ -201,7 +201,7 @@ class StaapisacApiService {
       refreshToken: auth.refreshToken ?? '',
     );
 
-    await LogService.instance.logSpResult(
+    LogService.instance.logSpResult(
       service: service,
       path: uri.toString(),
       errorCode: 0,
@@ -257,7 +257,7 @@ class StaapisacApiService {
     Future<List<StaapisacFotoRow>> callOnce() async {
       final start = DateTime.now();
 
-      await LogService.instance.logRequest('STAAPISAC_FOTOS_START', {
+      LogService.instance.logRequest('STAAPISAC_FOTOS_START', {
         'url': uri.toString(),
         'id': id.trim(),
         'hasAccessToken': appState.staapisacAccessToken.isNotEmpty,
@@ -265,7 +265,7 @@ class StaapisacApiService {
         'payload': payload,
       });
 
-      await LogService.instance.logSpExec(
+      LogService.instance.logSpExec(
         service: service,
         path: uri.toString(),
         method: 'POST',
@@ -290,7 +290,7 @@ class StaapisacApiService {
           .map((m) => StaapisacFotoRow.fromJson(m.cast<String, dynamic>()))
           .toList();
 
-      await LogService.instance.logRequest('STAAPISAC_FOTOS_ROWS', {
+      LogService.instance.logRequest('STAAPISAC_FOTOS_ROWS', {
         'id': id.trim(),
         'rows': rows.length,
         'items': rows.map((r) {
@@ -303,7 +303,7 @@ class StaapisacApiService {
         }).toList(),
       });
 
-      await LogService.instance.logSpResult(
+      LogService.instance.logSpResult(
         service: service,
         path: uri.toString(),
         errorCode: 0,
@@ -328,7 +328,7 @@ class StaapisacApiService {
           e.toString().toLowerCase().contains('unauthorized');
 
       if (is401) {
-        await LogService.instance.logWarning(
+        LogService.instance.logWarning(
           'STAAPISAC_FOTOS_401_REFRESH_RETRY',
           {'id': id.trim(), 'error': e.toString()},
         );
@@ -337,7 +337,7 @@ class StaapisacApiService {
           await refreshStaapisac(appState: appState);
           return await callOnce();
         } catch (e2, st2) {
-          await LogService.instance.logError(
+          LogService.instance.logError(
             'STAAPISAC_FOTOS_RETRY_FAIL',
             e2,
             st2,
@@ -346,7 +346,7 @@ class StaapisacApiService {
         }
       }
 
-      await LogService.instance.logError('STAAPISAC_FOTOS_EXCEPTION', e, st);
+      LogService.instance.logError('STAAPISAC_FOTOS_EXCEPTION', e, st);
       rethrow;
     }
   }
@@ -355,7 +355,7 @@ class StaapisacApiService {
     required AppStateManager appState,
     required String choferId,
   }) async {
-    await LogService.instance.logRequest('STAAPISAC_GET_FOTO_CHOFER_START', {
+    LogService.instance.logRequest('STAAPISAC_GET_FOTO_CHOFER_START', {
       'choferId': choferId,
     });
 
@@ -364,7 +364,7 @@ class StaapisacApiService {
     for (final r in rows) {
       final img = r.img?.trim() ?? '';
 
-      await LogService.instance.logRequest('STAAPISAC_GET_FOTO_CHOFER_ROW', {
+      LogService.instance.logRequest('STAAPISAC_GET_FOTO_CHOFER_ROW', {
         'choferId': choferId,
         'codeError': r.codeError,
         'message': r.message,
@@ -373,7 +373,7 @@ class StaapisacApiService {
       });
 
       if ((r.codeError ?? 1) == 0 && img.isNotEmpty) {
-        await LogService.instance.logRequest('STAAPISAC_GET_FOTO_CHOFER_OK', {
+        LogService.instance.logRequest('STAAPISAC_GET_FOTO_CHOFER_OK', {
           'choferId': choferId,
           'imgLength': img.length,
         });
@@ -382,7 +382,7 @@ class StaapisacApiService {
       }
     }
 
-    await LogService.instance.logWarning('STAAPISAC_GET_FOTO_CHOFER_EMPTY', {
+    LogService.instance.logWarning('STAAPISAC_GET_FOTO_CHOFER_EMPTY', {
       'choferId': choferId,
       'rows': rows.length,
     });

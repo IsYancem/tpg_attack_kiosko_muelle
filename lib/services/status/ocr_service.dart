@@ -81,7 +81,7 @@ class OcrService extends BaseService {
     if (!isMuelle) {
       setConnected(false);
       StatusLogBus.instance.addStatus('OCR', false);
-      await LogService.instance.logRequest('OCR_SKIP_CONNECT', {
+      LogService.instance.logRequest('OCR_SKIP_CONNECT', {
         'reason': 'MUELLE_FALSE',
       });
       return;
@@ -90,7 +90,7 @@ class OcrService extends BaseService {
     if (fullUrl.trim().isEmpty) {
       setConnected(false);
       StatusLogBus.instance.addStatus('OCR', false);
-      await LogService.instance.logWarning('OCR_WS_URL_EMPTY', {});
+      LogService.instance.logWarning('OCR_WS_URL_EMPTY', {});
       return;
     }
 
@@ -105,7 +105,7 @@ class OcrService extends BaseService {
       if (token == null || token.isEmpty) {
         setConnected(false);
         StatusLogBus.instance.addStatus('OCR', false);
-        await LogService.instance.logWarning('OCR_AUTH_EMPTY_TOKEN', {
+        LogService.instance.logWarning('OCR_AUTH_EMPTY_TOKEN', {
           'message': 'No se obtuvo access_token para OCR',
         });
         return;
@@ -115,7 +115,7 @@ class OcrService extends BaseService {
     } catch (e, st) {
       setConnected(false);
       StatusLogBus.instance.addStatus('OCR', false);
-      await LogService.instance.logError('OCR_CONNECT_FATAL', e, st);
+      LogService.instance.logError('OCR_CONNECT_FATAL', e, st);
       _scheduleReconnect(forceRefreshToken: true);
     }
   }
@@ -444,7 +444,7 @@ class OcrService extends BaseService {
         if (token == null || token.isEmpty) {
           setConnected(false);
           StatusLogBus.instance.addStatus('OCR', false);
-          await LogService.instance.logWarning('OCR_RECONNECT_NO_TOKEN', {});
+          LogService.instance.logWarning('OCR_RECONNECT_NO_TOKEN', {});
           _scheduleReconnect(forceRefreshToken: true);
           return;
         }
@@ -453,7 +453,7 @@ class OcrService extends BaseService {
       } catch (e, st) {
         setConnected(false);
         StatusLogBus.instance.addStatus('OCR', false);
-        await LogService.instance.logError('OCR_RECONNECT_ERROR', e, st);
+        LogService.instance.logError('OCR_RECONNECT_ERROR', e, st);
         _scheduleReconnect(forceRefreshToken: true);
       }
     });
@@ -497,7 +497,7 @@ class OcrService extends BaseService {
               Duration(seconds: safeExpiresIn),
             );
 
-            await LogService.instance.logRequest('OCR_AUTH_CACHE_SET', {
+            LogService.instance.logRequest('OCR_AUTH_CACHE_SET', {
               'expiresIn': auth.expiresIn,
               'tokenExpiresAt': _tokenExpiresAt?.toIso8601String(),
             });
@@ -505,7 +505,7 @@ class OcrService extends BaseService {
             return _cachedToken;
           }
         } catch (e, st) {
-          await LogService.instance.logError('OCR_AUTH_ATTEMPT_ERROR', e, st);
+          LogService.instance.logError('OCR_AUTH_ATTEMPT_ERROR', e, st);
         }
 
         if (attempt < maxAttempts) {
@@ -513,7 +513,7 @@ class OcrService extends BaseService {
         }
       }
 
-      await LogService.instance.logWarning('OCR_AUTH_RETRY_EXHAUSTED', {
+      LogService.instance.logWarning('OCR_AUTH_RETRY_EXHAUSTED', {
         'attempts': maxAttempts,
       });
 
@@ -533,7 +533,7 @@ class OcrService extends BaseService {
     if (authUrl.trim().isEmpty ||
         clientId.trim().isEmpty ||
         clientSecret.trim().isEmpty) {
-      await LogService.instance.logWarning('OCR_AUTH_CONFIG_MISSING', {
+      LogService.instance.logWarning('OCR_AUTH_CONFIG_MISSING', {
         'hasAuthUrl': authUrl.trim().isNotEmpty,
         'hasClientId': clientId.trim().isNotEmpty,
         'hasClientSecret': clientSecret.trim().isNotEmpty,
@@ -541,7 +541,7 @@ class OcrService extends BaseService {
       return null;
     }
 
-    await LogService.instance.logRequest('OCR_AUTH_START', {
+    LogService.instance.logRequest('OCR_AUTH_START', {
       'url': authUrl,
       'clientId': clientId,
       'attempt': attempt,
@@ -561,14 +561,14 @@ class OcrService extends BaseService {
         )
         .timeout(const Duration(seconds: 15));
 
-    await LogService.instance.logRequest('OCR_AUTH_RESPONSE', {
+    LogService.instance.logRequest('OCR_AUTH_RESPONSE', {
       'statusCode': response.statusCode,
       'bodyLength': response.body.length,
       'attempt': attempt,
     });
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      await LogService.instance.logWarning('OCR_AUTH_FAILED', {
+      LogService.instance.logWarning('OCR_AUTH_FAILED', {
         'statusCode': response.statusCode,
         'body': response.body,
         'attempt': attempt,
@@ -579,7 +579,7 @@ class OcrService extends BaseService {
     final decoded = jsonDecode(response.body);
 
     if (decoded is! Map<String, dynamic>) {
-      await LogService.instance.logWarning('OCR_AUTH_INVALID_JSON', {
+      LogService.instance.logWarning('OCR_AUTH_INVALID_JSON', {
         'attempt': attempt,
       });
       return null;
@@ -588,13 +588,13 @@ class OcrService extends BaseService {
     final auth = OcrAuthResult.fromJson(decoded);
 
     if (auth.accessToken.isEmpty) {
-      await LogService.instance.logWarning('OCR_AUTH_TOKEN_EMPTY', {
+      LogService.instance.logWarning('OCR_AUTH_TOKEN_EMPTY', {
         'attempt': attempt,
       });
       return null;
     }
 
-    await LogService.instance.logRequest('OCR_AUTH_OK', {
+    LogService.instance.logRequest('OCR_AUTH_OK', {
       'expiresIn': auth.expiresIn,
       'tokenLength': auth.accessToken.length,
       'attempt': attempt,

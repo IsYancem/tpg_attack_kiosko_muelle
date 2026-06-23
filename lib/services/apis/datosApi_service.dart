@@ -20,7 +20,7 @@ class DatosApiService extends BaseApiService {
   }) async {
     final sw = Stopwatch()..start();
 
-    await LogService.instance.logRequest('${tag}_FULL_REQUEST', {
+    LogService.instance.logRequest('${tag}_FULL_REQUEST', {
       'path': path,
       'method': method.name,
       'timeoutMs': timeout.inMilliseconds,
@@ -41,7 +41,7 @@ class DatosApiService extends BaseApiService {
 
       sw.stop();
 
-      await LogService.instance.logRequest('${tag}_FULL_RESPONSE', {
+      LogService.instance.logRequest('${tag}_FULL_RESPONSE', {
         'elapsedMs': sw.elapsedMilliseconds,
         'errorCode': res.errorCode,
         'message': res.message,
@@ -53,9 +53,9 @@ class DatosApiService extends BaseApiService {
     } catch (e, st) {
       sw.stop();
 
-      await LogService.instance.logError('${tag}_FULL_EXCEPTION', e, st);
+      LogService.instance.logError('${tag}_FULL_EXCEPTION', e, st);
 
-      await LogService.instance.logRequest('${tag}_FULL_EXCEPTION_CONTEXT', {
+      LogService.instance.logRequest('${tag}_FULL_EXCEPTION_CONTEXT', {
         'elapsedMs': sw.elapsedMilliseconds,
         'path': path,
         'method': method.name,
@@ -103,13 +103,13 @@ class DatosApiService extends BaseApiService {
     final normalizedPlaca = placa.trim().toUpperCase();
 
     if (normalizedPlaca.isEmpty) {
-      await LogService.instance.logWarning('CONSEGUIR_CONDUCTOR_SKIP', {
+      LogService.instance.logWarning('CONSEGUIR_CONDUCTOR_SKIP', {
         'reason': 'placa vacía',
       });
       return null;
     }
 
-    await LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_REQUEST', {
+    LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_REQUEST', {
       'placa': normalizedPlaca,
     });
 
@@ -118,7 +118,7 @@ class DatosApiService extends BaseApiService {
     final conductor = data?.conductor;
     final chofer = conductor?.chofer?.trim();
 
-    await LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_RESPONSE', {
+    LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_RESPONSE', {
       'errorCode': res.errorCode,
       'message': res.message,
       'placa': data?.placa,
@@ -165,7 +165,7 @@ class DatosApiService extends BaseApiService {
       'conseguirConductorPesoSal': conductor.pesosal?.toString(),
     });
 
-    await LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_MANAGER_OK', {
+    LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_MANAGER_OK', {
       'placa': normalizedPlaca,
       'driverCedula': chofer,
       'numTran': conductor.numTran,
@@ -201,13 +201,13 @@ class DatosApiService extends BaseApiService {
     final normalizedRuc = ruc.trim().toUpperCase();
 
     if (normalizedRuc.isEmpty) {
-      await LogService.instance.logWarning('CONSEGUIR_DATA_CONDUCTOR_SKIP', {
+      LogService.instance.logWarning('CONSEGUIR_DATA_CONDUCTOR_SKIP', {
         'reason': 'ruc vacío',
       });
       return null;
     }
 
-    await LogService.instance.logRequest('CONSEGUIR_DATA_CONDUCTOR_REQUEST', {
+    LogService.instance.logRequest('CONSEGUIR_DATA_CONDUCTOR_REQUEST', {
       'ruc': normalizedRuc,
     });
 
@@ -215,7 +215,7 @@ class DatosApiService extends BaseApiService {
     final data = res.data;
     final conductor = data?.conductor;
 
-    await LogService.instance.logRequest('CONSEGUIR_DATA_CONDUCTOR_RESPONSE', {
+    LogService.instance.logRequest('CONSEGUIR_DATA_CONDUCTOR_RESPONSE', {
       'errorCode': res.errorCode,
       'message': res.message,
       'ruc': data?.ruc,
@@ -356,13 +356,13 @@ class DatosApiService extends BaseApiService {
     final normalized = contenedor.trim().toUpperCase();
 
     if (normalized.isEmpty) {
-      await LogService.instance.logWarning('EXPO_REPESAJE_SKIP', {
+      LogService.instance.logWarning('EXPO_REPESAJE_SKIP', {
         'reason': 'contenedor vacío',
       });
       return null;
     }
 
-    await LogService.instance.logRequest('EXPO_REPESAJE_REQUEST', {
+    LogService.instance.logRequest('EXPO_REPESAJE_REQUEST', {
       'contenedor': normalized,
     });
 
@@ -370,7 +370,7 @@ class DatosApiService extends BaseApiService {
     final data = res.data;
     final solicitud = data?.solicitudUpdateDisv;
 
-    await LogService.instance.logRequest('EXPO_REPESAJE_RESPONSE', {
+    LogService.instance.logRequest('EXPO_REPESAJE_RESPONSE', {
       'errorCode': res.errorCode,
       'message': res.message,
       'contenedor': data?.contenedor,
@@ -410,7 +410,7 @@ class DatosApiService extends BaseApiService {
       'expoRepesajeSolicitudMsgError': solicitud?.msgError,
     });
 
-    await LogService.instance.logRequest('EXPO_REPESAJE_MANAGER_OK', {
+    LogService.instance.logRequest('EXPO_REPESAJE_MANAGER_OK', {
       'contenedor': normalized,
       'hasActiveSolicitud': data?.hasActiveSolicitud,
       'tipoOperacion': data?.tipoOperacion,
@@ -458,13 +458,13 @@ class ConseguirConductorService extends BaseApiService {
     final normalizedPlaca = placa.trim().toUpperCase();
 
     if (normalizedPlaca.isEmpty) {
-      await LogService.instance.logWarning('CONSEGUIR_CONDUCTOR_SKIP', {
+      LogService.instance.logWarning('CONSEGUIR_CONDUCTOR_SKIP', {
         'reason': 'placa vacía',
       });
       return null;
     }
 
-    await LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_REQUEST', {
+    LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_REQUEST', {
       'placa': normalizedPlaca,
     });
 
@@ -473,7 +473,7 @@ class ConseguirConductorService extends BaseApiService {
     final conductor = data?.conductor;
     final chofer = conductor?.chofer?.trim();
 
-    await LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_RESPONSE', {
+    LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_RESPONSE', {
       'errorCode': res.errorCode,
       'message': res.message,
       'placa': data?.placa,
@@ -520,7 +520,7 @@ class ConseguirConductorService extends BaseApiService {
       'conseguirConductorPesoSal': conductor.pesosal?.toString(),
     });
 
-    await LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_MANAGER_OK', {
+    LogService.instance.logRequest('CONSEGUIR_CONDUCTOR_MANAGER_OK', {
       'placa': normalizedPlaca,
       'driverCedula': chofer,
       'numTran': conductor.numTran,

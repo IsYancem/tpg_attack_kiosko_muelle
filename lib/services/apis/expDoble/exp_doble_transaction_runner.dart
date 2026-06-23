@@ -83,7 +83,7 @@ class ExpDobleTransactionRunner {
 
     final jobs = _construirJobs(manager);
 
-    await LogService.instance.logRequest('EXP_DOBLE_RUNNER_START', {
+    LogService.instance.logRequest('EXP_DOBLE_RUNNER_START', {
       'placa': placa,
       'driverCedula': manager.driverCedula,
       'totalContenedores': jobs.length,
@@ -148,7 +148,7 @@ class ExpDobleTransactionRunner {
 
         _limpiarDataTransaccion(manager);
 
-        await LogService.instance.logRequest('EXP_DOBLE_RUNNER_CONT_DONE', {
+        LogService.instance.logRequest('EXP_DOBLE_RUNNER_CONT_DONE', {
           'index': job.index,
           'etiqueta': job.etiqueta,
           'contenedor': job.contenedor,
@@ -181,7 +181,7 @@ class ExpDobleTransactionRunner {
         'ocrConfirmOk': true,
       });
 
-      await LogService.instance.logRequest('EXP_DOBLE_RUNNER_DONE', {
+      LogService.instance.logRequest('EXP_DOBLE_RUNNER_DONE', {
         'elapsedMs': sw.elapsedMilliseconds,
         'totalContenedores': jobs.length,
         'bypassSegundo': _bypassSegundoContenedor, // ?? BYPASS
@@ -194,7 +194,7 @@ class ExpDobleTransactionRunner {
       }
     } catch (e, st) {
       sw.stop();
-      await LogService.instance.logError('EXP_DOBLE_RUNNER_ERROR', e, st);
+      LogService.instance.logError('EXP_DOBLE_RUNNER_ERROR', e, st);
 
       final errorMsg = e is Exception
           ? e.toString().replaceAll('Exception: ', '')
@@ -337,7 +337,7 @@ class ExpDobleTransactionRunner {
     await _expSvc.terminar(manager, appManager);
     _abortarSiError(manager, 'terminar', job);
 
-    await LogService.instance.logRequest('EXP_DOBLE_RUNNER_CONT_OK', {
+    LogService.instance.logRequest('EXP_DOBLE_RUNNER_CONT_OK', {
       'index': job.index,
       'etiqueta': job.etiqueta,
       'contenedor': job.contenedor,

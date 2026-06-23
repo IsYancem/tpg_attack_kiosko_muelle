@@ -67,7 +67,7 @@ class _TrlIncomingScreenBodyState extends State<_TrlIncomingScreenBody>
           txn.setDriverPhotoUrl(imgB64);
         }
       } catch (e, st) {
-        await LogService.instance.logError('EXP_LOAD_PHOTO_FAIL', e, st);
+        LogService.instance.logError('EXP_LOAD_PHOTO_FAIL', e, st);
         if (!mounted) return;
       }
     });

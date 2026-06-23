@@ -45,7 +45,7 @@ class LogService extends ChangeNotifier {
     _currentFile = await _ensureActiveFile(DateTime.now());
     await _purgeOldFiles();
 
-    _sink = _writeLine;
+    _sink = _enqueueLine;
 
     httpClient = _LogHttpClient(_sink);
     dioInterceptor = _LogDioInterceptor(_sink);
@@ -53,20 +53,46 @@ class LogService extends ChangeNotifier {
     _initialised = true;
   }
 
-  Future<void> logRequest(String action, Map<String, dynamic> details) async {
-    await _writeLine('INFO', action, details);
+  Future<void> _logQueue = Future<void>.value();
+
+  Future<void> _enqueueLine(
+    String status,
+    String component,
+    Map<String, dynamic> details,
+  ) {
+    final safeDetails = Map<String, dynamic>.from(details);
+
+    _logQueue = _logQueue
+        .then<void>((_) async {
+          await _writeLine(status, component, safeDetails);
+        })
+        .catchError((Object error, StackTrace st) {
+          if (kDebugMode) {
+            debugPrint('[LogService] Error escribiendo log: $error');
+          }
+        });
+
+    return Future<void>.value();
   }
 
-  Future<void> logWarning(String action, Map<String, dynamic> details) async {
-    await _writeLine('WARN', action, details);
+  Future<void> flush() async {
+    await _logQueue;
   }
 
-  Future<void> logWarning2(String action) async {
-    await _writeLine('WARN', 'WARNING', {'message': action});
+  Future<void> logRequest(String action, Map<String, dynamic> details) {
+    return _enqueueLine('INFO', action, details);
   }
 
-  Future<void> logError(String action, Object error, [StackTrace? st]) async {
-    await _writeLine('ERROR', action, {
+  Future<void> logWarning(String action, Map<String, dynamic> details) {
+    return _enqueueLine('WARN', action, details);
+  }
+
+  Future<void> logWarning2(String action) {
+    return _enqueueLine('WARN', 'WARNING', {'message': action});
+  }
+
+  Future<void> logError(String action, Object error, [StackTrace? st]) {
+    return _enqueueLine('ERROR', action, {
       'error': _errToMap(error),
       if (st != null) 'stack': st.toString(),
     });
@@ -92,7 +118,7 @@ class LogService extends ChangeNotifier {
     required String target,
     Map<String, dynamic>? extra,
   }) async {
-    await _writeLine('INFO', 'CONN_START', {
+    return _enqueueLine('INFO', 'CONN_START', {
       'kind': kind,
       'target': target,
       'extra': extra ?? {},
@@ -108,7 +134,7 @@ class LogService extends ChangeNotifier {
     Object? error,
     Map<String, dynamic>? extra,
   }) async {
-    await _writeLine(ok ? 'INFO' : 'ERROR', 'CONN_END', {
+    return _enqueueLine(ok ? 'INFO' : 'ERROR', 'CONN_END', {
       'kind': kind,
       'target': target,
       'ok': ok,
@@ -144,7 +170,7 @@ class LogService extends ChangeNotifier {
     final status = levelOverride ?? (errorCode == 0 ? 'INFO' : 'ERROR');
 
     // ✅ ahora SIEMPRE: datetime | STATUS | COMPONENT | DETAILS(JSON)
-    await _writeLine(status, 'SP_RES', details);
+    return _enqueueLine(status, 'SP_RES', details);
   }
 
   // ===========================================================================
@@ -192,7 +218,11 @@ class LogService extends ChangeNotifier {
     final line =
         '${_nowStr()} | $status | $component | ${jsonEncode(details)}\n';
 
-    await _currentFile.writeAsString(line, mode: FileMode.append, flush: true);
+    await _currentFile.writeAsString(
+      line,
+      mode: FileMode.append,
+      flush: status == 'ERROR',
+    );
 
     if (kDebugMode) debugPrint(line.trimRight());
   }
@@ -329,7 +359,7 @@ class LogService extends ChangeNotifier {
     final status = levelOverride ?? 'INFO';
 
     // ✅ ahora SIEMPRE: datetime | STATUS | COMPONENT | DETAILS(JSON)
-    await _writeLine(status, 'SP_EXEC', details);
+    return _enqueueLine(status, 'SP_EXEC', details);
   }
 }
 

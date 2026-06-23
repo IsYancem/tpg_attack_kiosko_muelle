@@ -34,7 +34,7 @@ class BarreraLoginService {
 
   /// Conecta con el servicio de barrera (equivalente al connect de C#)
   static Future<BarreraLoginResponse> connect() async {
-    await LogService.instance.logRequest('BarreraLoginService.connect', {
+    LogService.instance.logRequest('BarreraLoginService.connect', {
       'action': 'starting_barrera_login',
     });
 
@@ -48,7 +48,7 @@ class BarreraLoginService {
       // Validar configuración
       if (loginUrl == null || loginUrl.isEmpty) {
         const errorMsg = 'LOGIN_BARRERA_URL no configurada en .env';
-        await LogService.instance.logError(
+        LogService.instance.logError(
           'BarreraLoginService.connect',
           errorMsg,
         );
@@ -57,7 +57,7 @@ class BarreraLoginService {
 
       if (user == null || user.isEmpty) {
         const errorMsg = 'USER_BARRERA no configurado en .env';
-        await LogService.instance.logError(
+        LogService.instance.logError(
           'BarreraLoginService.connect',
           errorMsg,
         );
@@ -66,7 +66,7 @@ class BarreraLoginService {
 
       if (password == null || password.isEmpty) {
         const errorMsg = 'PASSWORD_BARRERA no configurado en .env';
-        await LogService.instance.logError(
+        LogService.instance.logError(
           'BarreraLoginService.connect',
           errorMsg,
         );
@@ -78,7 +78,7 @@ class BarreraLoginService {
         queryParameters: {'user': user, 'passwd': password, 'group': group},
       );
 
-      await LogService.instance.logRequest('BarreraLoginService.connect', {
+      LogService.instance.logRequest('BarreraLoginService.connect', {
         'action': 'calling_barrera_service',
         'url': loginUrl, // Solo la URL base sin parámetros sensibles
         'user': user,
@@ -95,7 +95,7 @@ class BarreraLoginService {
             },
           );
 
-      await LogService.instance.logRequest('BarreraLoginService.connect', {
+      LogService.instance.logRequest('BarreraLoginService.connect', {
         'action': 'barrera_service_response',
         'status_code': response.statusCode,
         'response_length': response.body.length,
@@ -104,7 +104,7 @@ class BarreraLoginService {
       if (response.statusCode != 200) {
         final errorMsg =
             'HTTP ${response.statusCode} - Error en servicio de barrera';
-        await LogService.instance.logError(
+        LogService.instance.logError(
           'BarreraLoginService.connect',
           errorMsg,
         );
@@ -115,7 +115,7 @@ class BarreraLoginService {
 
       if (responseData.isEmpty) {
         const errorMsg = 'Respuesta vacía del servicio de barrera';
-        await LogService.instance.logError(
+        LogService.instance.logError(
           'BarreraLoginService.connect',
           errorMsg,
         );
@@ -123,7 +123,7 @@ class BarreraLoginService {
       }
 
       // El data devuelto contiene el userUuid (equivalente a wsResponse.data = data)
-      await LogService.instance.logRequest('BarreraLoginService.connect', {
+      LogService.instance.logRequest('BarreraLoginService.connect', {
         'action': 'barrera_login_success',
         'user_uuid_received': true,
         'response_data_length': responseData.length,
@@ -132,15 +132,15 @@ class BarreraLoginService {
       return BarreraLoginResponse.success(responseData);
     } on SocketException catch (e) {
       final errorMsg = 'Error de conexión: ${e.message}';
-      await LogService.instance.logError('BarreraLoginService.connect', e);
+      LogService.instance.logError('BarreraLoginService.connect', e);
       return BarreraLoginResponse.failure('WebEx::$errorMsg');
     } on Exception catch (e) {
       final errorMsg = 'Error: ${e.toString()}';
-      await LogService.instance.logError('BarreraLoginService.connect', e);
+      LogService.instance.logError('BarreraLoginService.connect', e);
       return BarreraLoginResponse.failure('Ex::$errorMsg');
     } catch (e) {
       final errorMsg = 'Error inesperado: ${e.toString()}';
-      await LogService.instance.logError('BarreraLoginService.connect', e);
+      LogService.instance.logError('BarreraLoginService.connect', e);
       return BarreraLoginResponse.failure('Ex::$errorMsg');
     }
   }

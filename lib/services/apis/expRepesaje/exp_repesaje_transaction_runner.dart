@@ -1,15 +1,21 @@
 // lib/services/apis/expRepesaje/exp_repesaje_transaction_runner.dart
 // Autor: Abraham Yance
 //
-// Runner dedicado al flujo EXP REPESAJE.
-// Orquesta la secuencia:
+// Runner dedicado al flujo EXP REPESAJE optimizado.
+// Secuencia rápida:
 //   PASO 1 → inicializar
-//   PASO 2 → validar-contenedor  (OCR vs DISV local + remoto)
+//   PASO 2 → validar contenedor local OCR vs DISV
 //   PASO 3 → guardar
 //   PASO 4 → terminar
+//   PASO 5 → abrir barrera
+//   PASO 6 → volver a OCR
 //
-// Si cualquier paso falla el flujo se detiene y se navega a ErrorScreen.
-// La clase de confirm anterior (ConfirmService) NO se usa aquí.
+// Cambio importante:
+//   Se elimina el HTTP extra de validar-contenedor.
+//   El backend vuelve a validar DISV dentro de guardar, por eso aquí solo se
+//   conserva una validación local rápida OCR vs DISV.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:tpg_attack_kiosko_muelle/screens/auth/ocrScanner_screen.dart';
@@ -24,7 +30,9 @@ class ExpRespesajeTransactionRunner {
   ExpRespesajeTransactionRunner();
 
   final ExpMuelleRepesajeService _svc = ExpMuelleRepesajeService();
-  final _log = LogService.instance;
+  final LogService _log = LogService.instance;
+
+  static const int _successDelaySeconds = 2;
 
   Future<void> run({
     required BuildContext context,
@@ -33,86 +41,91 @@ class ExpRespesajeTransactionRunner {
   }) async {
     final sw = Stopwatch()..start();
 
-    final placa = manager.vehiculoPlaca ?? '';
+    final placa = (manager.vehiculoPlaca ?? '').trim().toUpperCase();
     final contenedorOcr = (manager.get('contenedor1') as String? ?? '')
         .trim()
         .toUpperCase();
-    final solicitudId = manager.expoRepesajeSolicitudId;
 
-    await _log.logRequest('EXP_REPESAJE_RUNNER_START', {
-      'placa': placa,
-      'driverCedula': manager.driverCedula,
-      'contenedorOcr': contenedorOcr,
-      'solicitudId': solicitudId,
-      'solicitudEstado': manager.expoRepesajeSolicitudEstado,
-      'solicitudNuevoDisv': manager.expoRepesajeSolicitudNuevoDisv,
-      'tipoOperacion': manager.expoRepesajeTipoOperacion,
-      'atkId': manager.atkId,
-    });
+    _logBg(
+      _log.logRequest('EXP_REPESAJE_RUNNER_START', {
+        'placa': placa,
+        'driverCedula': manager.driverCedula,
+        'contenedorOcr': contenedorOcr,
+        'solicitudId': manager.expoRepesajeSolicitudId,
+        'solicitudEstado': manager.expoRepesajeSolicitudEstado,
+        'solicitudNuevoDisv': manager.expoRepesajeSolicitudNuevoDisv,
+        'tipoOperacion': manager.expoRepesajeTipoOperacion,
+        'atkId': manager.atkId,
+      }),
+      'EXP_REPESAJE_RUNNER_START_LOG_ERROR',
+    );
 
     try {
-      // ── VALIDACIÓN PREVIA ──────────────────────────────────────────────────
       if (contenedorOcr.isEmpty) {
         throw ExpMuelleRepesajeServiceException(
           'No se encontró contenedor OCR para procesar el repesaje.',
+          step: 'VALIDACION_PREVIA',
         );
       }
 
-      // ══════════════════════════════════════════════════════════════════════
-      // PASO 1: INICIALIZAR
-      // ══════════════════════════════════════════════════════════════════════
-      manager.setMany({
+      manager.setManyWithoutNotify({
         'isLoading': true,
-        'mensajeInferior':
-            'Inicializando transacción EXP...\nContenedor: $contenedorOcr',
+        'mensajeInferior': 'Procesando repesaje exportación...',
         'transactionType': 'EXP_REPESAJE',
         'muelleTransactionCode': 'EXP_REPESAJE',
         'muelleTransactionName': 'Exportación Repesaje',
       });
 
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO1_START', {
-        'placa': placa,
-        'contenedor': contenedorOcr,
-      });
+      // ══════════════════════════════════════════════════════════════════════
+      // PASO 1: INICIALIZAR
+      // ══════════════════════════════════════════════════════════════════════
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_PASO1_START', {
+          'placa': placa,
+          'contenedor': contenedorOcr,
+        }),
+        'EXP_REPESAJE_RUNNER_PASO1_START_LOG_ERROR',
+      );
 
       final inicializarRes = await _svc.inicializar(
         manager: manager,
         appManager: appManager,
       );
 
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO1_OK', {
-        'numtrans': inicializarRes.data?.numtrans,
-        'estado': inicializarRes.data?.estado,
-        'contenedorDisv': inicializarRes.data?.contenedor,
-        'tara': inicializarRes.data?.tara,
-        'isSalida': inicializarRes.data?.isSalida,
-      });
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_PASO1_OK', {
+          'numtrans': inicializarRes.data?.numtrans,
+          'estado': inicializarRes.data?.estado,
+          'contenedorDisv': inicializarRes.data?.contenedor,
+          'tara': inicializarRes.data?.tara,
+          'isSalida': inicializarRes.data?.isSalida,
+        }),
+        'EXP_REPESAJE_RUNNER_PASO1_OK_LOG_ERROR',
+      );
 
       if (!context.mounted) return;
 
       // ══════════════════════════════════════════════════════════════════════
-      // PASO 2: VALIDAR CONTENEDOR (OCR vs DISV)
+      // PASO 2: VALIDACIÓN LOCAL OCR VS DISV
       // ══════════════════════════════════════════════════════════════════════
-      manager.setManyWithoutNotify({
-        'isLoading': true,
-        'mensajeInferior':
-            'Validando contenedor con DISV...\nOCR: $contenedorOcr',
-      });
-
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO2_START', {
-        'contenedorOcr': contenedorOcr,
-        'contenedorDisv': inicializarRes.data?.contenedor,
-      });
-
-      final validarRes = await _svc.validarContenedor(
-        manager: manager,
-        appManager: appManager,
+      _validarContenedorLocalOrFail(
+        contenedorOcr: contenedorOcr,
+        contenedorDisv: inicializarRes.data?.contenedor,
       );
 
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO2_OK', {
-        'esValido': validarRes.data?.esValido,
-        'contenedorValidado': validarRes.data?.contenedorValidado,
+      manager.setManyWithoutNotify({
+        'expMuelleContenedorValidado': contenedorOcr,
+        'expMuelleValidarContenedorOk': true,
       });
+
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_PASO2_LOCAL_OK', {
+          'contenedorOcr': contenedorOcr,
+          'contenedorDisv': inicializarRes.data?.contenedor,
+          'nota': 'Se omite HTTP validar-contenedor; guardar valida en backend.',
+        }),
+        'EXP_REPESAJE_RUNNER_PASO2_LOCAL_OK_LOG_ERROR',
+      );
 
       if (!context.mounted) return;
 
@@ -121,27 +134,33 @@ class ExpRespesajeTransactionRunner {
       // ══════════════════════════════════════════════════════════════════════
       manager.setManyWithoutNotify({
         'isLoading': true,
-        'mensajeInferior':
-            'Guardando transacción EXP...\nPeso: ${manager.pesoActualBascula} kg',
+        'mensajeInferior': 'Guardando repesaje exportación...',
       });
 
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO3_START', {
-        'contenedor': contenedorOcr,
-        'pesoIngreso': manager.pesoActualBascula,
-        'tara': manager.pesoTara,
-        'atkId': manager.atkId,
-      });
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_PASO3_START', {
+          'contenedor': contenedorOcr,
+          'pesoIngreso': manager.pesoActualBascula,
+          'tara': manager.pesoTara,
+          'atkId': manager.atkId,
+          'ocrDiSvVehicleAccessId': manager.get('ocrDiSvVehicleAccessId'),
+        }),
+        'EXP_REPESAJE_RUNNER_PASO3_START_LOG_ERROR',
+      );
 
       final guardarRes = await _svc.guardar(
         manager: manager,
         appManager: appManager,
       );
 
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO3_OK', {
-        'numero': guardarRes.data?.numero,
-        'contenedorValidadoDisv': guardarRes.data?.contenedorValidadoDisv,
-        'enListaNegra': guardarRes.data?.enListaNegra,
-      });
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_PASO3_OK', {
+          'numero': guardarRes.data?.numero,
+          'contenedorValidadoDisv': guardarRes.data?.contenedorValidadoDisv,
+          'enListaNegra': guardarRes.data?.enListaNegra,
+        }),
+        'EXP_REPESAJE_RUNNER_PASO3_OK_LOG_ERROR',
+      );
 
       if (!context.mounted) return;
 
@@ -150,151 +169,155 @@ class ExpRespesajeTransactionRunner {
       // ══════════════════════════════════════════════════════════════════════
       manager.setManyWithoutNotify({
         'isLoading': true,
-        'mensajeInferior': 'Finalizando transacción...\nPor favor espere.',
+        'mensajeInferior': 'Finalizando repesaje exportación...',
       });
 
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO4_START', {
-        'atkId': manager.atkId,
-        'pesoIngreso': manager.pesoActualBascula,
-      });
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_PASO4_START', {
+          'atkId': manager.atkId,
+          'ocrDiSvVehicleAccessId': manager.get('ocrDiSvVehicleAccessId'),
+          'pesoIngreso': manager.pesoActualBascula,
+        }),
+        'EXP_REPESAJE_RUNNER_PASO4_START_LOG_ERROR',
+      );
 
       final terminarRes = await _svc.terminar(
         manager: manager,
         appManager: appManager,
       );
 
-      await _log.logRequest('EXP_REPESAJE_RUNNER_PASO4_OK', {
-        'estado': terminarRes.data?.estado,
-        'isAutorizado': terminarRes.data?.isAutorizado,
-        'isBloqueado': terminarRes.data?.isBloqueado,
-      });
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_PASO4_OK', {
+          'estado': terminarRes.data?.estado,
+          'isAutorizado': terminarRes.data?.isAutorizado,
+          'isBloqueado': terminarRes.data?.isBloqueado,
+        }),
+        'EXP_REPESAJE_RUNNER_PASO4_OK_LOG_ERROR',
+      );
 
       if (!context.mounted) return;
 
-      // ══════════════════════════════════════════════════════════════════════
-      // FINALIZAR
-      // ══════════════════════════════════════════════════════════════════════
       sw.stop();
 
       final estadoFinal = terminarRes.data?.estado ?? 'PROCESADO';
 
-      manager.setMany({
-        'isLoading': false,
-        'mensajeInferior': 'Transacción completada.\nEstado: $estadoFinal',
+      manager.setManyWithoutNotify({
+        'isLoading': true,
+        'mensajeInferior': 'Repesaje completado. Abriendo barrera...',
         'transaccionActiva': false,
         'ocrConfirmOk': true,
         'expoRepesajeConfirmOk': true,
-      });
-
-      await _log.logRequest('EXP_REPESAJE_RUNNER_DONE', {
-        'elapsedMs': sw.elapsedMilliseconds,
-        'placa': placa,
-        'contenedor': contenedorOcr,
-        'numtrans': inicializarRes.data?.numtrans,
-        'estadoFinal': estadoFinal,
-      });
-
-      if (!context.mounted) return;
-
-      manager.setMany({
-        'isLoading': true,
-        'mensajeInferior': 'Transacción completada.\nAbriendo barrera...',
         'expRepesajeGateOpenRequested': false,
         'expRepesajeGateOpenOk': false,
         'expRepesajeGateOpenGate': null,
         'expRepesajeGateOpenSide': null,
       });
 
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_RUNNER_DONE', {
+          'elapsedMs': sw.elapsedMilliseconds,
+          'placa': placa,
+          'contenedor': contenedorOcr,
+          'numtrans': inicializarRes.data?.numtrans,
+          'estadoFinal': estadoFinal,
+        }),
+        'EXP_REPESAJE_RUNNER_DONE_LOG_ERROR',
+      );
+
+      // ══════════════════════════════════════════════════════════════════════
+      // PASO 5: ABRIR BARRERA
+      // ══════════════════════════════════════════════════════════════════════
       await _openGateAfterSuccess(appManager: appManager, manager: manager);
 
       if (!context.mounted) return;
 
-      manager.setMany({
+      manager.setManyWithoutNotify({
         'isLoading': false,
         'mensajeInferior': 'Repesaje completado. Barrera abierta.',
         'expRepesajeGateOpenOk': true,
+        'flowRemainingSeconds': _successDelaySeconds,
       });
 
-      const totalSeconds = 10;
+      await Future.delayed(const Duration(seconds: _successDelaySeconds));
 
-      for (int i = totalSeconds; i >= 0; i--) {
-        if (!context.mounted) return;
+      manager.setFlowRemainingSeconds(null);
 
-        manager.setFlowRemainingSeconds(i);
-
-        if (i == 0) break;
-        await Future.delayed(const Duration(seconds: 1));
-      }
-
-      await _log.logRequest('EXP_REPESAJE_AUTO_EXIT', {
-        'after_seconds': totalSeconds,
-        'placa': manager.vehiculoPlaca,
-        'contenedor': manager.get('contenedor1'),
-        'rfidGate': manager.get('rfidGate'),
-        'side': manager.get('side'),
-        'doorNumber': manager.get('doorNumber'),
-        'expRepesajeGateOpenRequested': manager.get(
-          'expRepesajeGateOpenRequested',
-        ),
-        'expRepesajeGateOpenOk': manager.get('expRepesajeGateOpenOk'),
-        'expRepesajeGateOpenGate': manager.get('expRepesajeGateOpenGate'),
-        'expRepesajeGateOpenSide': manager.get('expRepesajeGateOpenSide'),
-      });
+      _logBg(
+        _log.logRequest('EXP_REPESAJE_AUTO_EXIT', {
+          'after_seconds': _successDelaySeconds,
+          'placa': manager.vehiculoPlaca,
+          'contenedor': manager.get('contenedor1'),
+          'rfidGate': manager.get('rfidGate'),
+          'side': manager.get('side'),
+          'doorNumber': manager.get('doorNumber'),
+          'expRepesajeGateOpenRequested': manager.get(
+            'expRepesajeGateOpenRequested',
+          ),
+          'expRepesajeGateOpenOk': manager.get('expRepesajeGateOpenOk'),
+          'expRepesajeGateOpenGate': manager.get('expRepesajeGateOpenGate'),
+          'expRepesajeGateOpenSide': manager.get('expRepesajeGateOpenSide'),
+        }),
+        'EXP_REPESAJE_AUTO_EXIT_LOG_ERROR',
+      );
 
       manager.resetAll();
       manager.setFlowRemainingSeconds(null);
 
       if (!context.mounted) return;
 
-      Navigator.pushAndRemoveUntil(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const OcrScannerScreen(),
-          transitionDuration: const Duration(milliseconds: 150),
-          transitionsBuilder: (_, animation, __, child) =>
-              FadeTransition(opacity: animation, child: child),
-        ),
-        (route) => false,
-      );
+      _navigateToOcr(context);
     } catch (e, st) {
       sw.stop();
+
       await _log.logError('EXP_REPESAJE_RUNNER_ERROR', e, st);
 
-      String errorMsg;
+      final errorMsg = _resolveErrorMessage(e);
 
       if (e is ExpMuelleRepesajeServiceException) {
-        errorMsg = e.message;
-        await _log.logRequest('EXP_REPESAJE_RUNNER_STEP_FAILED', {
-          'step': e.step,
-          'message': e.message,
-          'elapsedMs': sw.elapsedMilliseconds,
-        });
-      } else {
-        errorMsg = e is Exception
-            ? e.toString().replaceAll('Exception: ', '')
-            : e.toString();
+        _logBg(
+          _log.logRequest('EXP_REPESAJE_RUNNER_STEP_FAILED', {
+            'step': e.step,
+            'message': e.message,
+            'elapsedMs': sw.elapsedMilliseconds,
+          }),
+          'EXP_REPESAJE_RUNNER_STEP_FAILED_LOG_ERROR',
+        );
       }
 
-      manager.setMany({
+      manager.setManyWithoutNotify({
         'isLoading': false,
         'hasError': true,
         'errorMessage': errorMsg,
         'ocrConfirmOk': false,
         'expoRepesajeConfirmOk': false,
+        'transaccionActiva': false,
       });
 
-      if (context.mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (_, __, ___) => ErrorScreen(error: errorMsg),
-            transitionDuration: const Duration(milliseconds: 150),
-            transitionsBuilder: (_, animation, __, child) =>
-                FadeTransition(opacity: animation, child: child),
-          ),
-          (route) => false,
-        );
-      }
+      if (!context.mounted) return;
+
+      _navigateToError(context, errorMsg);
+    }
+  }
+
+  void _validarContenedorLocalOrFail({
+    required String contenedorOcr,
+    required String? contenedorDisv,
+  }) {
+    final ocr = contenedorOcr.trim().toUpperCase();
+    final disv = (contenedorDisv ?? '').trim().toUpperCase();
+
+    if (ocr.isEmpty) {
+      throw ExpMuelleRepesajeServiceException(
+        'No se encontró contenedor OCR para procesar el repesaje.',
+        step: 'VALIDAR_CONTENEDOR_LOCAL',
+      );
+    }
+
+    if (disv.isNotEmpty && ocr != disv) {
+      throw ExpMuelleRepesajeServiceException(
+        'El contenedor leído por OCR ($ocr) no coincide con el contenedor del DISV ($disv).',
+        step: 'VALIDAR_CONTENEDOR_LOCAL',
+      );
     }
   }
 
@@ -306,44 +329,48 @@ class ExpRespesajeTransactionRunner {
     final gateCfg = appManager.gateConfig;
 
     final url = _s(kioskCfg?.controlGateService);
-
-    // Header: va como headers['api-key']
     final headerApiKey = _s(gateCfg?.apiKey);
-
-    // Body: va dentro del JSON base64: {"gate": 92, "api_key": keyPlc, "side": 1}
     final bodyApiKey = _s(gateCfg?.keyPlc);
-
     final gate = _rfidGate(manager);
 
-    // IMPORTANTE:
-    // Según tu regla, en EXP REPESAJE siempre abrimos side 1.
+    // Regla de negocio: EXP REPESAJE siempre side 1.
     const side = 1;
 
-    await _log.logRequest('EXP_REPESAJE_GATE_OPEN_START', {
-      'url': url,
-      'urlSource': 'kioskConfig.controlGateService',
-      'gate': gate,
-      'side': side,
-      'sideRule': 'EXP_REPESAJE siempre side=1',
-      'headerApiKeySource': 'gateConfig.apiKey',
-      'bodyApiKeySource': 'gateConfig.keyPlc',
-      'managerRfidGate': manager.get('rfidGate'),
-      'managerSide': manager.get('side'),
-      'managerDoorNumber': manager.get('doorNumber'),
-      'sideGate': manager.sideGate,
-      'kioskControlGateService': kioskCfg?.controlGateService,
-      'gateConfigApiKeyLen': headerApiKey.length,
-      'gateConfigKeyPlcLen': bodyApiKey.length,
-      'hasUrl': url.isNotEmpty,
-      'hasHeaderApiKey': headerApiKey.isNotEmpty,
-      'hasBodyApiKey': bodyApiKey.isNotEmpty,
-      'snapshot': _snapshotExpRepesaje(manager),
-    });
+    _logBg(
+      _log.logRequest('EXP_REPESAJE_GATE_OPEN_START', {
+        'url': url,
+        'urlSource': 'kioskConfig.controlGateService',
+        'gate': gate,
+        'side': side,
+        'sideRule': 'EXP_REPESAJE siempre side=1',
+        'headerApiKeySource': 'gateConfig.apiKey',
+        'bodyApiKeySource': 'gateConfig.keyPlc',
+        'managerRfidGate': manager.get('rfidGate'),
+        'managerSide': manager.get('side'),
+        'managerDoorNumber': manager.get('doorNumber'),
+        'sideGate': manager.sideGate,
+        'kioskControlGateService': kioskCfg?.controlGateService,
+        'gateConfigApiKeyLen': headerApiKey.length,
+        'gateConfigKeyPlcLen': bodyApiKey.length,
+        'hasUrl': url.isNotEmpty,
+        'hasHeaderApiKey': headerApiKey.isNotEmpty,
+        'hasBodyApiKey': bodyApiKey.isNotEmpty,
+        'snapshot': _snapshotExpRepesaje(manager),
+      }),
+      'EXP_REPESAJE_GATE_OPEN_START_LOG_ERROR',
+    );
 
     if (url.isEmpty ||
         headerApiKey.isEmpty ||
         bodyApiKey.isEmpty ||
         gate <= 0) {
+      manager.setManyWithoutNotify({
+        'expRepesajeGateOpenRequested': true,
+        'expRepesajeGateOpenOk': false,
+        'expRepesajeGateOpenGate': gate,
+        'expRepesajeGateOpenSide': side,
+      });
+
       await _log.logWarning('EXP_REPESAJE_GATE_OPEN_SKIPPED', {
         'reason': 'Configuración incompleta para abrir barrera',
         'urlEmpty': url.isEmpty,
@@ -356,13 +383,6 @@ class ExpRespesajeTransactionRunner {
         'gateConfigKeyPlcLen': bodyApiKey.length,
         'managerRfidGate': manager.get('rfidGate'),
         'snapshot': _snapshotExpRepesaje(manager),
-      });
-
-      manager.setManyWithoutNotify({
-        'expRepesajeGateOpenRequested': true,
-        'expRepesajeGateOpenOk': false,
-        'expRepesajeGateOpenGate': gate,
-        'expRepesajeGateOpenSide': side,
       });
 
       throw Exception(
@@ -386,18 +406,68 @@ class ExpRespesajeTransactionRunner {
       'expRepesajeGateOpenSide': side,
     });
 
-    await _log.logRequest('EXP_REPESAJE_GATE_OPEN_RESULT', {
-      'opened': opened,
-      'url': url,
-      'gate': gate,
-      'side': side,
-      'gateLocation': gate.toString(),
-      'snapshot': _snapshotExpRepesaje(manager),
-    });
+    _logBg(
+      _log.logRequest('EXP_REPESAJE_GATE_OPEN_RESULT', {
+        'opened': opened,
+        'url': url,
+        'gate': gate,
+        'side': side,
+        'gateLocation': gate.toString(),
+        'snapshot': _snapshotExpRepesaje(manager),
+      }),
+      'EXP_REPESAJE_GATE_OPEN_RESULT_LOG_ERROR',
+    );
 
     if (!opened) {
       throw Exception('No se pudo abrir la barrera.');
     }
+  }
+
+  void _navigateToOcr(BuildContext context) {
+    Navigator.pushAndRemoveUntil(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const OcrScannerScreen(),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        transitionsBuilder: (_, __, ___, child) => child,
+      ),
+      (route) => false,
+    );
+  }
+
+  void _navigateToError(BuildContext context, String errorMsg) {
+    Navigator.pushAndRemoveUntil(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => ErrorScreen(error: errorMsg),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+        transitionsBuilder: (_, __, ___, child) => child,
+      ),
+      (route) => false,
+    );
+  }
+
+  void _logBg(Future<dynamic> future, String tag) {
+    unawaited(
+      future.catchError((error, stackTrace) async {
+        await _log.logError(tag, error, stackTrace);
+      }),
+    );
+  }
+
+  String _resolveErrorMessage(Object error) {
+    if (error is ExpMuelleRepesajeServiceException) {
+      return error.message;
+    }
+
+    return error
+        .toString()
+        .replaceAll('Exception: ', '')
+        .replaceAll('Error::', '')
+        .replaceAll('Error:', '')
+        .trim();
   }
 
   int _rfidGate(AtkTransactionManager manager) {

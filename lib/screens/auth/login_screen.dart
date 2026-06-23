@@ -91,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
 
     try {
-      await LogService.instance.logRequest('LOGIN_MANUAL_START', {
+      LogService.instance.logRequest('LOGIN_MANUAL_START', {
         'username': username,
       });
 
@@ -108,7 +108,33 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      // ---- 2. Guardar tokens de Keycloak en AtkTransactionManager ----
+      const requiredGroup = '/TPG/Ocr Muelle';
+
+      if (!token.hasRealmGroup(requiredGroup)) {
+        LogService.instance.logWarning('LOGIN_KEYCLOAK_GROUP_DENIED', {
+          'username': username,
+          'requiredGroup': requiredGroup,
+          'realmAccessGroups': token.realmAccessGroups,
+          'name': token.name,
+          'identificationId': token.identificationId,
+          'preferredUsername': token.preferredUsername,
+        });
+
+        _showSnack(
+          messenger,
+          'Usuario autenticado, pero no pertenece al grupo $requiredGroup.',
+        );
+
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => AccessDeniedScreen(username: username),
+          ),
+          (route) => false,
+        );
+
+        return;
+      }
+
       atk.setMany({
         'accessToken': token.accessToken,
         'refreshToken': token.refreshToken,
@@ -117,17 +143,33 @@ class _LoginScreenState extends State<LoginScreen> {
         'sessionState': token.sessionState,
         'tokenExpiresIn': token.expiresIn,
         'refreshExpiresIn': token.refreshExpiresIn,
+
+        // Datos del usuario autenticado en Keycloak
+        'authUserName': token.name,
+        'authIdentificationId': token.identificationId,
+        'authPreferredUsername': token.preferredUsername,
+        'authEmail': token.email,
+        'authRuc': token.ruc,
+        'authUserType': token.userType,
+        'authGivenName': token.givenName,
+        'authRealmGroups': token.realmAccessGroups,
+        'authRequiredGroup': requiredGroup,
+        'authHasOcrMuelleGroup': true,
+
+        // Compatibilidad si en alguna parte ya usabas estos nombres genéricos
+        'loggedUserName': token.name,
+        'loggedUserIdentification': token.identificationId,
       });
 
-      await LogService.instance.logRequest('LOGIN_KEYCLOAK_TOKENS_SAVED_ATK', {
+      LogService.instance.logRequest('LOGIN_KEYCLOAK_TOKENS_SAVED_ATK', {
         'hasAccessToken': token.accessToken.isNotEmpty,
         'hasRefreshToken': token.refreshToken.isNotEmpty,
         'sessionState': token.sessionState,
       });
 
       // ---- 3. Información de la máquina ----
-      final machineInfo =
-          await WindowsDeviceIdService.instance.getUuidHostnameDomainIp();
+      final machineInfo = await WindowsDeviceIdService.instance
+          .getUuidHostnameDomainIp();
       final deviceId = WindowsDeviceIdService.instance.deviceId ?? 'Unknown';
 
       if (!mounted) return;
@@ -149,13 +191,13 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (orch == null) {
-        await LogService.instance.logError('LOGIN_ORCH_NULL', {});
+        LogService.instance.logError('LOGIN_ORCH_NULL', {});
         _showSnack(messenger, 'Sin respuesta del servidor.');
         return;
       }
 
       if (orch.errorCode != 0) {
-        await LogService.instance.logWarning('LOGIN_ORCH_FAILED', {
+        LogService.instance.logWarning('LOGIN_ORCH_FAILED', {
           'msg': orch.message,
         });
         navigator.pushAndRemoveUntil(
@@ -177,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
         deviceId: _validationDeviceId,
       );
 
-      await LogService.instance.logRequest('KIOSK_PUBLICKEY_VALIDATE', {
+      LogService.instance.logRequest('KIOSK_PUBLICKEY_VALIDATE', {
         'user': username,
         'deviceId': deviceId,
         'publicKey': publicKey,
@@ -204,10 +246,10 @@ class _LoginScreenState extends State<LoginScreen> {
       try {
         await StaapisacApiService().loginStaapisac(appState: appState);
       } catch (e, st) {
-        await LogService.instance.logError('STAAPISAC_LOGIN_LOGIN_FAIL', e, st);
+        LogService.instance.logError('STAAPISAC_LOGIN_LOGIN_FAIL', e, st);
       }
 
-      await LogService.instance.logRequest('LOGIN_MANUAL_OK', {
+      LogService.instance.logRequest('LOGIN_MANUAL_OK', {
         'user': username,
         'msg': orch.message,
       });
@@ -216,8 +258,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // ---- 7. Navegar según el modo ----
       final isMuelle = appState.isMuelle;
-      final nextScreen =
-          isMuelle ? const OcrScannerScreen() : const RfidScreen();
+      final nextScreen = isMuelle
+          ? const OcrScannerScreen()
+          : const RfidScreen();
 
       navigator.pushAndRemoveUntil(
         PageRouteBuilder(
@@ -229,7 +272,7 @@ class _LoginScreenState extends State<LoginScreen> {
         (route) => false,
       );
     } catch (e, st) {
-      await LogService.instance.logError('LOGIN_MANUAL_ERROR', e, st);
+      LogService.instance.logError('LOGIN_MANUAL_ERROR', e, st);
       if (!mounted) return;
       _showSnack(messenger, 'Error inesperado: $e');
     } finally {
@@ -440,9 +483,7 @@ class _GlowCircle extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color, color.withValues(alpha: 0.0)],
-        ),
+        gradient: RadialGradient(colors: [color, color.withValues(alpha: 0.0)]),
       ),
     );
   }
@@ -502,8 +543,10 @@ class _LoginFormState extends State<_LoginForm> {
       filled: true,
       fillColor: c.fieldBg,
       isDense: true,
-      contentPadding:
-          EdgeInsets.symmetric(vertical: 18 * s, horizontal: 16 * s),
+      contentPadding: EdgeInsets.symmetric(
+        vertical: 18 * s,
+        horizontal: 16 * s,
+      ),
       labelStyle: TextStyle(fontSize: 15 * s, color: c.textSecondary),
       border: border(Colors.transparent),
       enabledBorder: border(c.border.withValues(alpha: 0.4)),
@@ -690,8 +733,11 @@ class _GradientButton extends StatelessWidget {
                   : Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.login_rounded,
-                            color: Colors.white, size: 22 * s),
+                        Icon(
+                          Icons.login_rounded,
+                          color: Colors.white,
+                          size: 22 * s,
+                        ),
                         SizedBox(width: 10 * s),
                         Text(
                           'Ingresar',

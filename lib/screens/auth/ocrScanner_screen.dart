@@ -111,6 +111,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       _resetLocalScannerState();
 
+      final authSnapshot = _manager?.authSnapshot ?? {};
+
       _manager?.resetAllWithDefaults({
         'isLoading': false,
         'hasError': false,
@@ -120,9 +122,11 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         'ocrFacialOk': false,
         'mensajeInferior': null,
         'flowRemainingSeconds': null,
+
+        ...authSnapshot,
       });
 
-      await LogService.instance.logRequest('OCR_SCREEN_ENTER_RESET', {
+      LogService.instance.logRequest('OCR_SCREEN_ENTER_RESET', {
         'message': 'OCR anterior limpiado al entrar a pantalla',
       });
 
@@ -154,6 +158,14 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     _routeTransactionCode = '';
     _routeTransactionName = '';
     _routeTargetScreen = '';
+  }
+
+  void _runInBackground(Future<dynamic> future, String tag) {
+    unawaited(
+      future.catchError((error, stackTrace) async {
+        LogService.instance.logError(tag, error, stackTrace);
+      }),
+    );
   }
 
   @override
@@ -558,7 +570,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       _navigating = false;
       _validating = false;
       _consultandoConductor = false;
-      await LogService.instance.logError('OCR_RFID_HANDLER_ERROR', e, st);
+      LogService.instance.logError('OCR_RFID_HANDLER_ERROR', e, st);
     }
   }
 
@@ -824,12 +836,15 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       final tipoMov = _normalizeTipoMov(manager.transactionType);
       final cargaSuelta = _normalizeFlag(manager.vehiculoTipoCarga);
 
-      LogService.instance.logRequest('OCR_DATA_CONDUCTOR_READY_NAVIGATE', {
-        'elapsedMs': sw.elapsedMilliseconds,
-        'tipoMov': tipoMov,
-        'driverCedula': manager.driverCedula,
-        'driverName': manager.driverName,
-      });
+      _runInBackground(
+        LogService.instance.logRequest('OCR_DATA_CONDUCTOR_READY_NAVIGATE', {
+          'elapsedMs': sw.elapsedMilliseconds,
+          'tipoMov': tipoMov,
+          'driverCedula': manager.driverCedula,
+          'driverName': manager.driverName,
+        }),
+        'OCR_DATA_CONDUCTOR_READY_NAVIGATE_LOG_ERROR',
+      );
 
       if (tipoMov.isEmpty) {
         throw Exception('No existe tipo de movimiento para navegar.');
@@ -1005,7 +1020,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         final mJson = m.toJson();
         final contEnMovimiento = _extractContainerFromConductorRuc(mJson);
 
-        await LogService.instance.logRequest('OCR_EXP_DOBLE_CLASSIFY_MOV', {
+        LogService.instance.logRequest('OCR_EXP_DOBLE_CLASSIFY_MOV', {
           'movid': mJson['movid'],
           'id': mJson['id'],
           'contEnMovimiento': contEnMovimiento,
@@ -1063,7 +1078,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
           'ocrDiSvVehicleAccessIdEntrada': vacIdEntrada.toString(),
       });
 
-      await LogService.instance.logRequest('OCR_AUTO_EXP_DOBLE_FOUND', {
+      LogService.instance.logRequest('OCR_AUTO_EXP_DOBLE_FOUND', {
         'placa': placa,
         'expMovementCount': expMovements.length,
         'contenedorOcr': contenedorOcr,
@@ -1226,7 +1241,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         final isRepesaje = repesajeData?.hasActiveSolicitud ?? false;
         final expMovementCount = _int(manager.get('ocrExpMovementCount')) ?? 0;
 
-        await LogService.instance.logRequest('OCR_EXPO_REPESAJE_ROUTING', {
+_runInBackground(
+        LogService.instance.logRequest('OCR_EXPO_REPESAJE_ROUTING', {
           'placa': placa,
           'contenedor': contenedorOcr,
           'isRepesaje': isRepesaje,
@@ -1234,7 +1250,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
           'solicitudId': repesajeData?.solicitudUpdateDisv?.id,
           'solicitudEstado': repesajeData?.solicitudUpdateDisv?.estado,
           'expMovementCount': expMovementCount,
-        });
+        }), 'OCR_EXPO_REPESAJE_ROUTING',);
 
         // ════════════════════════════════════════════════════════════════════
         // RAMA A: EXP REPESAJE
@@ -1347,7 +1363,8 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             if (vacIdSalida > 0) 'atkId': vacIdSalida.toString(),
           });
 
-          await LogService.instance
+_runInBackground(
+          LogService.instance
               .logRequest('OCR_NAV_EXP_DOBLE_CONFIRM_SALIDA_START', {
                 'placa': placa,
                 'expMovementCount': expMovementCount,
@@ -1356,7 +1373,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
                 'contenedorOcr': contenedorOcr,
                 'vacIdSalida': vacIdSalida,
                 'movSalidaId': movSalidaJson['id'],
-              });
+              }), 'OCR_NAV_EXP_DOBLE_CONFIRM_SALIDA_START_ERROR',);
 
           // Confirm SOLO del movimiento de SALIDA
           final confirmOk = await _ejecutarConfirmMuelleExp(
@@ -1395,8 +1412,6 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
             'expDobleVacIdEntrada': _extractVacIdFromMovement(
               movEntradaJson ?? {},
             ),
-
-            // contenedor1 vuelve al OCR (el de ENTRADA)
             'contenedor1': contenedorOcr,
           });
 
@@ -1485,16 +1500,21 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       }
     }
 
-    await _markOcrAsReceivedIfNeeded(
-      reason:
-          'navigate_to_${_routeTargetScreen.isNotEmpty ? _routeTargetScreen : mov}',
+    _runInBackground(
+      _markOcrAsReceivedIfNeeded(
+        reason:
+            'navigate_to_${_routeTargetScreen.isNotEmpty ? _routeTargetScreen : mov}',
+      ),
+      'OCR_UPDATE_STATUS_BACKGROUND_ERROR',
     );
+
+    if (!mounted) return;
 
     Navigator.pushAndRemoveUntil(
       context,
       PageRouteBuilder(
         pageBuilder: (_, __, ___) => targetScreen,
-        transitionDuration: const Duration(milliseconds: 150),
+        transitionDuration: const Duration(milliseconds: 80),
         transitionsBuilder: (_, animation, __, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
@@ -1760,7 +1780,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       if (mounted) setState(() {});
 
-      await LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_START', {
+      LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_START', {
         'placa': placa,
         'contenedor': contenedor,
         'isRepesaje': isRepesaje,
@@ -1783,7 +1803,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
       final errorCode = _int(raw['errorCode']) ?? 1;
       final message = raw['message']?.toString() ?? '';
 
-      await LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_RESPONSE', {
+      LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_RESPONSE', {
         'errorCode': errorCode,
         'message': message,
         'isRepesaje': isRepesaje,
@@ -1831,7 +1851,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         'contenedor1': contenedor,
       });
 
-      await LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_OK', {
+      LogService.instance.logRequest('OCR_CONFIRM_MUELLE_EXP_OK', {
         'placa': placa,
         'contenedor': contenedor,
         'isRepesaje': isRepesaje,
@@ -1850,7 +1870,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
 
       return true;
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'OCR_CONFIRM_MUELLE_EXP_EXCEPTION',
         e,
         st,
@@ -2004,7 +2024,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     if (manager == null || appManager == null) return;
 
     if (_ocrStatusUpdateSent) {
-      await LogService.instance.logRequest('OCR_UPDATE_STATUS_SKIP', {
+      LogService.instance.logRequest('OCR_UPDATE_STATUS_SKIP', {
         'reason': 'already_sent',
         'flowReason': reason,
         'ocrPersistenceId': manager.ocrPersistenceId,
@@ -2016,7 +2036,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     final uuid = (manager.ocrPersistenceId ?? '').trim();
 
     if (uuid.isEmpty) {
-      await LogService.instance.logWarning('OCR_UPDATE_STATUS_SKIP', {
+      LogService.instance.logWarning('OCR_UPDATE_STATUS_SKIP', {
         'reason': 'ocrPersistenceId_empty',
         'flowReason': reason,
         'ocrTransitId': manager.ocrTransitId,
@@ -2032,7 +2052,7 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
     if (currentStatus == 'RECIBIDO') {
       _ocrStatusUpdateSent = true;
 
-      await LogService.instance.logRequest('OCR_UPDATE_STATUS_SKIP', {
+      LogService.instance.logRequest('OCR_UPDATE_STATUS_SKIP', {
         'reason': 'already_received',
         'flowReason': reason,
         'uuid': uuid,
@@ -2056,14 +2076,14 @@ class _OcrScannerScreenState extends State<OcrScannerScreen> {
         'ocrUpdateStatusAt': DateTime.now().toIso8601String(),
       });
 
-      await LogService.instance.logRequest('OCR_UPDATE_STATUS_OK', {
+      LogService.instance.logRequest('OCR_UPDATE_STATUS_OK', {
         'uuid': uuid,
         'newStatus': 'Recibido',
         'flowReason': reason,
         'response': raw,
       });
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'OCR_UPDATE_STATUS_ERROR_NON_BLOCKING',
         e,
         st,

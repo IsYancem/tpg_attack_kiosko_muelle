@@ -26,7 +26,7 @@ class PrintDspCsService {
     bool saveToSpecificPath = true,
     bool autoPrint = true,
   }) async {
-    await LogService.instance.logRequest('PrintDspCsService.printTicket', {
+    LogService.instance.logRequest('PrintDspCsService.printTicket', {
       'action': 'creating_dsp_cs_ticket_pdf',
       'turno': ticketData.turno,
       'placa': ticketData.placa,
@@ -90,7 +90,7 @@ class PrintDspCsService {
         final fileName = _buildFileName(ticketData);
         final file = await _savePdfBytes(bytes, fileName);
 
-        await LogService.instance.logRequest('PrintDspCsService.printTicket', {
+        LogService.instance.logRequest('PrintDspCsService.printTicket', {
           'action': 'dsp_cs_ticket_saved_successfully',
           'path': file.path,
           'file_name': fileName,
@@ -116,7 +116,7 @@ class PrintDspCsService {
         return true;
       }
     } catch (e, st) {
-      await LogService.instance.logError(
+      LogService.instance.logError(
         'PrintDspCsService.printTicket',
         e,
         st,

@@ -23,7 +23,7 @@ class PrintExmService {
     bool saveToSpecificPath = true,
     bool autoPrint = true,
   }) async {
-    await LogService.instance.logRequest('PrintExmService.printTicket', {
+    LogService.instance.logRequest('PrintExmService.printTicket', {
       'action': 'creating_exm_ticket_pdf',
       'atkId': ticketData.atkId,
       'placa': ticketData.placa,
@@ -98,7 +98,7 @@ class PrintExmService {
         final fileName = _buildFileName(ticketData);
         final file = await _savePdfBytes(pdfBytes, fileName);
 
-        await LogService.instance.logRequest('PrintExmService.printTicket', {
+        LogService.instance.logRequest('PrintExmService.printTicket', {
           'action': 'exm_ticket_saved_successfully',
           'path': file.path,
           'file_name': fileName,
@@ -106,7 +106,7 @@ class PrintExmService {
 
         if (autoPrint && Platform.isWindows) {
           final printResult = await PrintAutoService.printPdfSilently(file);
-          await LogService.instance.logRequest('PrintExmService.printTicket', {
+          LogService.instance.logRequest('PrintExmService.printTicket', {
             'action': 'auto_print_result',
             'success': printResult.isSuccess,
             'message': printResult.message,
@@ -122,7 +122,7 @@ class PrintExmService {
         return true;
       }
     } catch (e, st) {
-      await LogService.instance.logError('PrintExmService.printTicket', e, st);
+      LogService.instance.logError('PrintExmService.printTicket', e, st);
       return false;
     }
   }

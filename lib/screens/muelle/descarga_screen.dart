@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -41,42 +43,37 @@ class _DescargaScreenBodyState extends State<_DescargaScreenBody>
   void initState() {
     super.initState();
     _runner = DescargaTransactionRunner();
-
-    // ⚠️ La foto del chofer ya NO se carga aquí.
-    // El runner la dispara en paralelo (_loadDriverPhoto, unawaited),
-    // así evitamos pedir la misma foto dos veces para el mismo driverCedula.
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
+void didChangeDependencies() {
+  super.didChangeDependencies();
 
-    if (_runnerStarted) return;
+  if (_runnerStarted) return;
 
-    _runnerStarted = true;
+  _runnerStarted = true;
 
-    _appManager = context.read<AppStateManager>();
-    _manager = context.read<AtkTransactionManager>();
+  _appManager = context.read<AppStateManager>();
+  _manager = context.read<AtkTransactionManager>();
 
-    _manager!.setManyWithoutNotify({
-      'isLoading': true,
-      'mensajeInferior': 'Procesando descarga...\nPor favor espere.',
-    });
+  _manager!.setMany({
+    'isLoading': true,
+    'mensajeInferior': 'Procesando descarga...',
+  });
 
-    SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+  // Ejecutar inmediatamente, sin esperar animación ni postFrame.
+  unawaited(_startRunnerFast());
+}
 
-      Future.microtask(() {
-        if (!mounted) return;
+Future<void> _startRunnerFast() async {
+  if (!mounted || _appManager == null || _manager == null) return;
 
-        _runner.run(
-          context: context,
-          appManager: _appManager!,
-          manager: _manager!,
-        );
-      });
-    });
-  }
+  await _runner.run(
+    context: context,
+    appManager: _appManager!,
+    manager: _manager!,
+  );
+}
 
   @override
   Widget build(BuildContext context) {

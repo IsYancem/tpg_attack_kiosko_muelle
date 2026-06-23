@@ -21,7 +21,7 @@ class PrintDspService {
     bool saveToSpecificPath = true,
     bool autoPrint = true,
   }) async {
-    await LogService.instance.logRequest('PrintDspService.printTicket', {
+    LogService.instance.logRequest('PrintDspService.printTicket', {
       'action': 'creating_dsp_ticket_pdf',
       'turno': ticketData.turno,
       'placa': ticketData.placa,
@@ -128,7 +128,7 @@ class PrintDspService {
         final fileName = _buildFileName(ticketData);
         final file = await _savePdfBytes(pdfBytes, fileName);
 
-        await LogService.instance.logRequest('PrintDspService.printTicket', {
+        LogService.instance.logRequest('PrintDspService.printTicket', {
           'action': 'dsp_ticket_saved_successfully',
           'path': file.path,
           'file_name': fileName,
@@ -136,7 +136,7 @@ class PrintDspService {
 
         if (autoPrint && Platform.isWindows) {
           final printResult = await PrintAutoService.printPdfSilently(file);
-          await LogService.instance.logRequest('PrintDspService.printTicket', {
+          LogService.instance.logRequest('PrintDspService.printTicket', {
             'action': 'auto_print_result',
             'success': printResult.isSuccess,
             'message': printResult.message,
@@ -152,7 +152,7 @@ class PrintDspService {
         return true;
       }
     } catch (e, st) {
-      await LogService.instance.logError('PrintDspService.printTicket', e, st);
+      LogService.instance.logError('PrintDspService.printTicket', e, st);
       return false;
     }
   }

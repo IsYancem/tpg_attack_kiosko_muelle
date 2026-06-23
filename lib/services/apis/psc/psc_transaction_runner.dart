@@ -23,9 +23,7 @@ class PscTransactionRunner {
   final PscApiService _api;
   final StaapisacApiService _staapisacApi;
 
-  // ⏱️ Segundos que la pantalla de éxito permanece visible antes de volver al
-  // OCR. Bájalo a 0–2 si lo quieres prácticamente inmediato.
-  static const int kSuccessDelaySeconds = 3;
+  static const int kSuccessDelaySeconds = 2;
 
   bool _running = false;
 
@@ -120,11 +118,9 @@ class PscTransactionRunner {
         'mensajeInferior': 'Inicializando porteo sin contenedor...',
       });
 
-      // ⏳ Garantiza que tieneFoto/msgFoto estén resueltos antes de armar
-      // el payload. Si la foto ya terminó (lo normal), no espera nada.
-      await photoFuture;
-
+      unawaited(photoFuture);
       final initPayload = _buildInicializarRequest(appManager, manager);
+
       unawaited(
         _logStepPayload(
           step: 'INICIALIZAR',
@@ -268,10 +264,9 @@ class PscTransactionRunner {
         context,
         PageRouteBuilder(
           pageBuilder: (_, __, ___) => const OcrScannerScreen(),
-          transitionDuration: const Duration(milliseconds: 150),
-          transitionsBuilder: (_, animation, __, child) {
-            return FadeTransition(opacity: animation, child: child);
-          },
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+          transitionsBuilder: (_, __, ___, child) => child,
         ),
         (route) => false,
       );
@@ -426,7 +421,7 @@ class PscTransactionRunner {
       'pscNavegarServices': data?.services,
     });
 
-    manager.setMany({
+    manager.setManyWithoutNotify({
       'mensajeInferior': res.isOk
           ? 'Validación inicial correcta.'
           : 'No se pudo validar porteo sin contenedor.',
@@ -651,7 +646,7 @@ class PscTransactionRunner {
     AppStateManager appManager,
     AtkTransactionManager manager,
   ) async {
-    await LogService.instance.logRequest('PSC_RUNNER_START', {
+    LogService.instance.logRequest('PSC_RUNNER_START', {
       'usuario': _usuario(),
       'kiosk': {
         'gate': appManager.kioskConfig?.gate,
@@ -670,13 +665,13 @@ class PscTransactionRunner {
     required JsonMap payload,
     required AtkTransactionManager manager,
   }) async {
-    await LogService.instance.logRequest('PSC_STEP_START', {
+    LogService.instance.logRequest('PSC_STEP_START', {
       'step': step,
       'path': path,
       'timestamp': DateTime.now().toIso8601String(),
     });
 
-    await LogService.instance.logSpExec(
+    LogService.instance.logSpExec(
       service: 'PSC_$step',
       path: path,
       method: 'POST',
@@ -684,7 +679,7 @@ class PscTransactionRunner {
       context: {'snapshotBefore': _snapshotManager(manager)},
     );
 
-    await LogService.instance.logRequest('PSC_STEP_PAYLOAD', {
+    LogService.instance.logRequest('PSC_STEP_PAYLOAD', {
       'step': step,
       'path': path,
       'payload': payload,
@@ -699,7 +694,7 @@ class PscTransactionRunner {
     required PscApiEnvelope<T> res,
     required AtkTransactionManager manager,
   }) async {
-    await LogService.instance.logSpResult(
+    LogService.instance.logSpResult(
       service: 'PSC_$step',
       path: path,
       errorCode: res.errorCode,
@@ -711,7 +706,7 @@ class PscTransactionRunner {
       },
     );
 
-    await LogService.instance.logRequest('PSC_STEP_RESULT', {
+    LogService.instance.logRequest('PSC_STEP_RESULT', {
       'step': step,
       'path': path,
       'errorCode': res.errorCode,
@@ -721,7 +716,7 @@ class PscTransactionRunner {
       'snapshotAfter': _snapshotManager(manager),
     });
 
-    await LogService.instance.logRequest('PSC_MANAGER_SNAPSHOT', {
+    LogService.instance.logRequest('PSC_MANAGER_SNAPSHOT', {
       'step': step,
       'snapshot': _snapshotManager(manager),
     });

@@ -41,7 +41,7 @@ class _ErrorScreenState extends State<ErrorScreen> {
       context.read<AtkTransactionManager>().resetAll();
 
       // ✅ 3) Log del error
-      await LogService.instance.logError('ERROR_SCREEN_ENTERED', widget.error);
+      LogService.instance.logError('ERROR_SCREEN_ENTERED', widget.error);
 
       // ✅ 4) Iniciar countdown
       _startCountdownTimer();
@@ -53,12 +53,12 @@ class _ErrorScreenState extends State<ErrorScreen> {
       final cm = ConnectivityManager.instance;
       cm.stopAll();
 
-      await LogService.instance.logRequest('SERVICES_STOPPED', {
+      LogService.instance.logRequest('SERVICES_STOPPED', {
         'reason': 'error_screen',
         'error': widget.error,
       });
     } catch (e) {
-      await LogService.instance.logWarning('SERVICES_STOP_FAILED', {
+      LogService.instance.logWarning('SERVICES_STOP_FAILED', {
         'error': e.toString(),
       });
     }
@@ -98,7 +98,7 @@ class _ErrorScreenState extends State<ErrorScreen> {
 
       await ConnectivityManager.instance.restart(appState);
 
-      await LogService.instance.logRequest('ERROR_SCREEN_EXIT', {
+      LogService.instance.logRequest('ERROR_SCREEN_EXIT', {
         'action': isMuelle ? 'returning_to_ocr' : 'returning_to_rfid',
         'isMuelle': isMuelle,
       });
@@ -115,7 +115,7 @@ class _ErrorScreenState extends State<ErrorScreen> {
         (route) => false,
       );
     } catch (e) {
-      await LogService.instance.logError('ERROR_SCREEN_NAVIGATION_FAILED', e);
+      LogService.instance.logError('ERROR_SCREEN_NAVIGATION_FAILED', e);
 
       if (!mounted) return;
 

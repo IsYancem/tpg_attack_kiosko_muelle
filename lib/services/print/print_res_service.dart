@@ -24,7 +24,7 @@ class PrintResService {
     bool saveToSpecificPath = true,
     bool autoPrint = true,
   }) async {
-    await LogService.instance.logRequest('PrintResService.printTicket', {
+    LogService.instance.logRequest('PrintResService.printTicket', {
       'action': 'creating_res_ticket_pdf',
       'atkId': ticketData.atkId,
       'placa': ticketData.placa,
@@ -97,7 +97,7 @@ class PrintResService {
         final fileName = _buildFileName(ticketData);
         final file = await _savePdfBytes(pdfBytes, fileName);
 
-        await LogService.instance.logRequest('PrintResService.printTicket', {
+        LogService.instance.logRequest('PrintResService.printTicket', {
           'action': 'res_ticket_saved_successfully',
           'path': file.path,
           'file_name': fileName,
@@ -105,7 +105,7 @@ class PrintResService {
 
         if (autoPrint && Platform.isWindows) {
           final printResult = await PrintAutoService.printPdfSilently(file);
-          await LogService.instance.logRequest('PrintResService.printTicket', {
+          LogService.instance.logRequest('PrintResService.printTicket', {
             'action': 'auto_print_result',
             'success': printResult.isSuccess,
             'message': printResult.message,
@@ -121,7 +121,7 @@ class PrintResService {
         return true;
       }
     } catch (e, st) {
-      await LogService.instance.logError('PrintResService.printTicket', e, st);
+      LogService.instance.logError('PrintResService.printTicket', e, st);
       return false;
     }
   }

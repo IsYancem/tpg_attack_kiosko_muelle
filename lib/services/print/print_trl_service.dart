@@ -77,7 +77,7 @@ class PrintTrlService {
     bool saveToSpecificPath = true,
     bool autoPrint = true,
   }) async {
-    await LogService.instance.logRequest('PrintTrlService.printTicket', {
+    LogService.instance.logRequest('PrintTrlService.printTicket', {
       'action': 'creating_trl_ticket_pdf',
       'atk_id': ticketData.atkId,
       'placa': ticketData.placa,
@@ -162,7 +162,7 @@ class PrintTrlService {
         final fileName = _buildFileName(ticketData);
         final file = await _savePdfBytes(pdfBytes, fileName);
 
-        await LogService.instance.logRequest('PrintTrlService.printTicket', {
+        LogService.instance.logRequest('PrintTrlService.printTicket', {
           'action': 'trl_ticket_saved_successfully',
           'path': file.path,
           'file_name': fileName,
@@ -171,7 +171,7 @@ class PrintTrlService {
         // Impresión automática
         if (autoPrint && Platform.isWindows) {
           final printResult = await PrintAutoService.printPdfSilently(file);
-          await LogService.instance.logRequest('PrintTrlService.printTicket', {
+          LogService.instance.logRequest('PrintTrlService.printTicket', {
             'action': 'auto_print_result',
             'success': printResult.isSuccess,
             'message': printResult.message,
@@ -187,7 +187,7 @@ class PrintTrlService {
         return true;
       }
     } catch (e, st) {
-      await LogService.instance.logError('PrintTrlService.printTicket', e, st);
+      LogService.instance.logError('PrintTrlService.printTicket', e, st);
       return false;
     }
   }
